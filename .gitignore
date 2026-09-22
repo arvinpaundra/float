@@ -1,0 +1,10 @@
+# build output
+tauri/target/
+tauri/gen/
+ui/node_modules/
+ui/src/js/
+
+# local settings (Spotify Client ID)
+.env
+
+.DS_Store

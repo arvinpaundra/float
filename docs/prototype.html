@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spot Lyrics — Interactive Design Prototype</title>
+<style>
+  :root {
+    --bg: #0d0e12;
+    --panel: #16181d;
+    --panel-2: #1c1f26;
+    --border: #262a33;
+    --text: #e8eaed;
+    --dim: #8b909c;
+    --accent: #1db954;
+    --accent-2: #1ed760;
+    --warn: #f5a623;
+    --danger: #e5484d;
+    --red-1: #d0231a;
+    --red-2: #9c0a06;
+    --spotify-bg: #121212;
+    --spotify-side: #000;
+    --spotify-text: #ffffff;
+    --spotify-dim: #b3b3b3;
+    --radius: 12px;
+    --mono: "SF Mono", ui-monospace, "JetBrains Mono", monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Hiragino Sans", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  /* ---------- header ---------- */
+  header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  header h1 { font-size: 18px; font-weight: 800; letter-spacing: -0.02em; }
+  header h1 small { color: var(--dim); font-weight: 400; font-size: 12px; }
+  .btn-group { display: flex; gap: 6px; flex-wrap: wrap; }
+  .btn {
+    appearance: none;
+    background: var(--panel-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .15s, transform .05s;
+  }
+  .btn:hover { background: #242832; }
+  .btn:active { transform: scale(.97); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #000; }
+  .btn.primary:hover { background: var(--accent-2); }
+  .btn.active { background: var(--accent); color: #000; border-color: var(--accent); }
+  .btn.danger.active { background: var(--danger); border-color: var(--danger); color: #fff; }
+  .btn.warn.active { background: var(--warn); border-color: var(--warn); color: #000; }
+
+  .spacer { flex: 1; }
+  .meta { font-size: 11px; color: var(--dim); font-family: var(--mono); }
+
+  /* ---------- layout ---------- */
+  main { display: flex; gap: 16px; flex: 1; min-height: 640px; }
+  #desktop-wrap {
+    flex: 1;
+    min-width: 0;
+    background: linear-gradient(160deg, #1b1e2a 0%, #0e1017 55%, #12141b 100%);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* ---------- macOS desktop mock ---------- */
+  #desktop {
+    width: 900px;
+    height: 580px;
+    border-radius: 10px;
+    position: relative;
+    overflow: hidden;
+    background:
+      radial-gradient(120% 80% at 20% 0%, #2a3050 0%, transparent 55%),
+      radial-gradient(100% 100% at 90% 100%, #1c2233 0%, transparent 60%),
+      linear-gradient(150deg, #0f1320, #0b0e16);
+    box-shadow: 0 24px 60px rgba(0,0,0,.55);
+  }
+  #menubar {
+    height: 26px;
+    display: flex;
+    align-items: center;
+    padding: 0 14px;
+    font-size: 12px;
+    color: #d9dbe3;
+    background: rgba(30,34,48,.55);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid rgba(255,255,255,.06);
+    gap: 18px;
+  }
+  #menubar .right { margin-left: auto; display: flex; gap: 14px; align-items: center; font-size: 11px; }
+
+  /* ---------- fake spotify window ---------- */
+  #spotify {
+    position: absolute;
+    top: 52px;
+    left: 40px;
+    width: 470px;
+    height: 400px;
+    background: var(--spotify-bg);
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,.07);
+    box-shadow: 0 18px 44px rgba(0,0,0,.5);
+    display: flex;
+    overflow: hidden;
+    user-select: none;
+  }
+  #spotify .sidebar {
+    width: 58px;
+    background: var(--spotify-side);
+    padding: 10px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    align-items: center;
+    font-size: 16px;
+    color: var(--spotify-dim);
+  }
+  #spotify .sidebar .logo { color: var(--accent); font-size: 20px; margin-bottom: 4px; }
+  #spotify .sidebar span.active { color: #fff; }
+  #spotify .main { flex: 1; padding: 16px 20px; display: flex; flex-direction: column; gap: 10px; }
+  #spotify .topbar { display: flex; gap: 14px; color: var(--spotify-dim); font-size: 12px; align-items: center; }
+  #spotify .topbar .crumbs { display: flex; gap: 6px; align-items: center; }
+  #spotify .topbar .title { color: #fff; font-weight: 600; }
+  #art {
+    width: 168px; height: 168px;
+    border-radius: 8px;
+    box-shadow: 0 10px 26px rgba(0,0,0,.45);
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 52px;
+    margin: 6px 0;
+    transition: background 1s ease;
+  }
+  #spotify .nowplaying { margin-top: 2px; }
+  #spotify .nowplaying .t { font-size: 16px; font-weight: 700; color: var(--spotify-text); }
+  #spotify .nowplaying .a { font-size: 12px; color: var(--spotify-dim); margin-top: 2px; }
+  #progress-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+  #progress-row .time { font-size: 10px; color: var(--spotify-dim); font-family: var(--mono); width: 34px; }
+  #progress-row .time.r { text-align: right; }
+  #bar { flex: 1; height: 4px; background: #2a2a2a; border-radius: 2px; overflow: hidden; }
+  #bar-fill { height: 100%; width: 0%; background: #fff; border-radius: 2px; transition: width .1s linear; }
+  #controls { display: flex; align-items: center; gap: 18px; justify-content: center; margin-top: 14px; color: var(--spotify-dim); }
+  #controls .b { font-size: 15px; cursor: pointer; }
+  #controls .b.play { font-size: 26px; color: #fff; }
+
+  /* ---------- floating lyrics overlay (card) ---------- */
+  #overlay {
+    position: absolute;
+    top: 60px;
+    left: 560px;
+    width: 320px;
+    border-radius: 18px;
+    background: #000;
+    box-shadow: 0 20px 50px rgba(0,0,0,.6);
+    overflow: hidden;
+    cursor: grab;
+    transition: opacity .25s, transform .25s;
+    z-index: 10;
+    user-select: none;
+  }
+  #overlay.dragging { cursor: grabbing; transform: scale(1.02); box-shadow: 0 24px 60px rgba(0,0,0,.7); }
+  #overlay.hidden { opacity: 0; pointer-events: none; transform: translateY(6px); }
+
+  #overlay .drag-handle {
+    position: absolute;
+    top: 8px; right: 12px;
+    z-index: 3;
+    width: 40px; height: 7px;
+    border-radius: 5px;
+    background: rgba(255,255,255,.25);
+    box-shadow: 0 1px 4px rgba(0,0,0,.3);
+    display: flex; align-items: center; justify-content: center; gap: 3px;
+  }
+  #overlay .drag-handle i { width: 3px; height: 3px; border-radius: 50%; background: rgba(0,0,0,.55); }
+
+  #overlay .art {
+    aspect-ratio: 320 / 248;
+    background: linear-gradient(180deg, var(--red-1), var(--red-2));
+    display: grid;
+    place-items: center;
+    position: relative;
+    transition: background 1s ease;
+  }
+  #overlay .sync-badge {
+    position: absolute;
+    top: 10px; left: 12px;
+    z-index: 3;
+    font-size: 10px; font-weight: 700;
+    background: var(--warn); color: #000;
+    padding: 2px 8px; border-radius: 8px;
+    display: none;
+    font-family: var(--mono);
+  }
+  #overlay .sync-badge.show { display: inline-block; }
+
+  #overlay .lyrics {
+    width: 57%;
+    aspect-ratio: 1;
+    padding: 20px 16px;
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    mask-image: linear-gradient(transparent, #000 25%, #000 75%, transparent);
+    -webkit-mask-image: linear-gradient(transparent, #000 25%, #000 75%, transparent);
+  }
+  #overlay .lines {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    transition: transform .4s ease;
+    width: 100%;
+    align-items: center;
+  }
+  #overlay .lines p {
+    color: rgba(255,255,255,.35);
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 1.35;
+    text-align: center;
+    transition: color .3s, transform .3s;
+  }
+  #overlay .lines p.active { color: #fff; transform: scale(1.05); }
+
+  #overlay .ct { color: rgba(255,255,255,.55); text-align: center; font-size: 13px; padding: 8px; }
+  #overlay .ct b { color: rgba(255,255,255,.85); display: block; margin-bottom: 4px; font-size: 14px; }
+  #spinner {
+    width: 22px; height: 22px; border-radius: 50%;
+    border: 2px solid rgba(255,255,255,.2);
+    border-top-color: #fff;
+    animation: spin .8s linear infinite;
+    margin: 0 auto;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  #overlay .info {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 14px 16px 16px;
+  }
+  #overlay .text { flex: 1; min-width: 0; }
+  #overlay .title {
+    color: #fff;
+    font-size: 22px;
+    font-weight: 800;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #overlay .artist { color: var(--dim); font-size: 14px; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #overlay .credit { font-size: 9px; color: rgba(255,255,255,.35); font-family: var(--mono); flex-shrink: 0; }
+  #overlay .credit .off.show { color: var(--warn); }
+
+  /* ---------- flow panel ---------- */
+  #flow {
+    width: 300px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    overflow: hidden;
+  }
+  #flow h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--dim); }
+  #steps { display: flex; flex-direction: column; gap: 8px; }
+  .step {
+    display: flex; gap: 10px; align-items: flex-start;
+    font-size: 12px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: var(--panel-2);
+    border: 1px solid transparent;
+    color: var(--dim);
+    transition: all .25s;
+  }
+  .step .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #3a3f4a; margin-top: 3px; flex-shrink: 0;
+    transition: all .25s;
+  }
+  .step .sname { font-weight: 700; font-family: var(--mono); font-size: 11px; }
+  .step .sdesc { font-size: 11px; margin-top: 2px; }
+  .step.done { color: var(--text); border-color: rgba(29,185,84,.35); }
+  .step.done .dot { background: var(--accent); box-shadow: 0 0 8px rgba(29,185,84,.6); }
+  .step.done .sname { color: var(--accent-2); }
+  .step.active { color: var(--text); border-color: var(--warn); animation: pulse 1.2s infinite; }
+  .step.active .dot { background: var(--warn); }
+  .step.err { color: var(--text); border-color: var(--danger); }
+  .step.err .dot { background: var(--danger); }
+  .step.err .sname { color: var(--danger); }
+  @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(245,166,35,.35);} 50% { box-shadow: 0 0 0 4px rgba(245,166,35,0);} }
+  #log {
+    flex: 1;
+    background: #0d0f14;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    line-height: 1.6;
+    overflow-y: auto;
+    min-height: 120px;
+    max-height: 220px;
+  }
+  #log div { white-space: pre-wrap; word-break: break-word; }
+  #log .t { color: #556; }
+  #log .ok { color: var(--accent-2); }
+  #log .err { color: var(--danger); }
+  #log .warn { color: var(--warn); }
+  #log .dim { color: var(--dim); }
+  #log .req { color: #7aa2f7; }
+
+  footer {
+    font-size: 11px;
+    color: var(--dim);
+    display: flex;
+    gap: 20px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  footer kbd {
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 4px; padding: 1px 6px; font-family: var(--mono); font-size: 10px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Spot Lyrics <small>interactive design prototype</small></h1>
+  <div class="spacer"></div>
+  <div class="btn-group" id="state-btns">
+    <button class="btn primary active" data-state="playing">▶ Playing</button>
+    <button class="btn" data-state="paused">⏸ Paused</button>
+    <button class="btn" data-state="loading">⏳ Loading</button>
+    <button class="btn warn" data-state="offset">± Nudge</button>
+    <button class="btn" data-state="nolyrics">🚫 No lyrics</button>
+    <button class="btn" data-state="instrumental">🎵 Instrumental</button>
+    <button class="btn danger" data-state="private">🙈 Private</button>
+  </div>
+  <div class="btn-group">
+    <button class="btn primary" id="simulate">▶ Simulate full flow</button>
+    <button class="btn" id="reset">Reset</button>
+  </div>
+  <span class="meta" id="clock"></span>
+</header>
+
+<main>
+  <div id="desktop-wrap">
+    <div id="desktop">
+      <div id="menubar">
+        <span> </span><span>Spotify</span><span>File</span><span>Edit</span><span>View</span><span>Window</span>
+        <div class="right"><span>Wi‑Fi</span><span>🔋</span><span id="menuclk">9:41 PM</span></div>
+      </div>
+
+      <!-- fake spotify window -->
+      <div id="spotify">
+        <div class="sidebar">
+          <span class="logo">●</span>
+          <span class="active">⌂</span>
+          <span>⌕</span>
+          <span>▤</span>
+          <span>♥</span>
+        </div>
+        <div class="main">
+          <div class="topbar">
+            <div class="crumbs"><span>◂</span><span>▸</span><span class="title" id="sw-title">Now Playing</span></div>
+          </div>
+          <div id="art">🎧</div>
+          <div class="nowplaying">
+            <div class="t" id="sw-track">Neon Horizon</div>
+            <div class="a" id="sw-artist">Aurora Lane</div>
+          </div>
+          <div id="progress-row">
+            <span class="time" id="t-cur">0:00</span>
+            <div id="bar"><div id="bar-fill"></div></div>
+            <span class="time r" id="t-total">3:42</span>
+          </div>
+          <div id="controls">
+            <span class="b">⇤</span><span class="b">⏮</span><span class="b play" id="sw-play">▶</span><span class="b">⏭</span><span class="b">⇥</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- floating lyrics overlay (card) -->
+      <div id="overlay">
+        <div class="drag-handle"><i></i><i></i><i></i><i></i></div>
+        <span class="sync-badge" id="sync-badge">+0.6s</span>
+        <div class="art" id="overlay-art">
+          <div class="lyrics">
+            <div class="lines" id="lines"></div>
+          </div>
+        </div>
+        <div class="ct" id="overlay-ct" style="display:none"></div>
+        <div class="info">
+          <div class="text">
+            <div class="title" id="ov-title">Neon Horizon</div>
+            <div class="artist" id="ov-artist">Aurora Lane</div>
+          </div>
+          <div class="credit" id="credit">Lyrics by LRCLIB</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <aside id="flow">
+    <h3>Pipeline — full flow</h3>
+    <div id="steps">
+      <div class="step" id="st-poll"><span class="dot"></span><div><div class="sname">poll</div><div class="sdesc">GET /me/player/currently-playing (3s)</div></div></div>
+      <div class="step" id="st-cache"><span class="dot"></span><div><div class="sname">cache</div><div class="sdesc">SQLite lookup by track_id</div></div></div>
+      <div class="step" id="st-lrclib"><span class="dot"></span><div><div class="sname">lrclib</div><div class="sdesc">GET /api/get · duration ±2s</div></div></div>
+      <div class="step" id="st-parse"><span class="dot"></span><div><div class="sname">parse</div><div class="sdesc">LRC → [ms, line][]</div></div></div>
+      <div class="step" id="st-render"><span class="dot"></span><div><div class="sname">render</div><div class="sdesc">lineAt(progress + offset)</div></div></div>
+      <div class="step" id="st-sync"><span class="dot"></span><div><div class="sname">sync</div><div class="sdesc">interpolate between polls</div></div></div>
+    </div>
+    <h3>Event log</h3>
+    <div id="log"></div>
+  </aside>
+</main>
+
+<footer>
+  <span>Drag the overlay around the desktop to feel the floating window.</span>
+  <span><kbd>Space</kbd> play/pause</span>
+  <span>Gradient follows the track's theme color.</span>
+  <span id="mode-note"></span>
+</footer>
+
+<script>
+/* ============================================================
+   Dummy data — each track carries its own theme gradient
+============================================================ */
+const SONG_A = {
+  track: "Neon Horizon", artist: "Aurora Lane", duration: 222, emoji: "🎧",
+  theme: ["#d0231a", "#9c0a06"],   // red
+  lrc: [
+    [0.0,   "City lights, a waking dream"],
+    [3.2,   "Silver rivers through the seams"],
+    [6.4,   "Every heartbeat pulls me closer"],
+    [9.6,   "To a sky I've never seen"],
+    [13.0,  "Headlights trace the midnight air"],
+    [16.2,  "Racing thoughts beyond compare"],
+    [19.4,  "And the static of the city"],
+    [22.6,  "Fades away when you are there"],
+    [26.0,  "Neon horizon, calling me home"],
+    [29.4,  "Chasing the glow till the morning is gone"],
+    [33.0,  "Neon horizon, burning so bright"],
+    [36.6,  "You and me dancing into the light"],
+    [40.2,  "(oh oh oh) into the light"],
+  ]
+};
+const SONG_B = {
+  track: "Paper Planes", artist: "The Sleepwalkers", duration: 198, emoji: "🎸",
+  theme: ["#1a3ad0", "#4a0a9c"],   // indigo
+  lrc: [
+    [0.0,   "Fold me up, I'm paper thin"],
+    [3.0,   "Send me where the wind begins"],
+    [6.2,   "Write your name across the sky"],
+    [9.4,   "Let the clouds decide"],
+    [13.0,  "If I land on foreign ground"],
+    [16.2,  "Fold a corner, smooth it down"],
+    [19.4,  "Every crease a memory"],
+    [22.8,  "Every line a piece of me"],
+    [26.2,  "Paper planes and open roads"],
+    [29.6,  "Carry all the words I've owed"],
+    [33.2,  "When I reach the other side"],
+    [36.6,  "Fold me once more, take me flying"],
+  ]
+};
+const SONG_C = {
+  track: "Meadow", artist: "Yuki Tanaka", duration: 214, emoji: "🌿",
+  theme: ["#1a9c3a", "#0a5c2a"],   // green
+  lrc: [
+    [0.0,   "Soft green field in morning light"],
+    [3.4,   "Slow clouds drifting out of sight"],
+    [6.8,   "Every blade a little song"],
+    [10.2,  "Singing all day long"],
+    [13.6,  "Grass on grass and sky on sky"],
+    [17.0,  "Watch the hours wander by"],
+    [20.4,  "If the wind could take my hand"],
+    [24.0,  "We would walk this land"],
+    [27.4,  "Meadow, meadow, hold me near"],
+    [30.8,  "Whisper soft the things I fear"],
+    [34.2,  "Meadow, meadow, green and wide"],
+    [37.6,  "Keep me safe inside"],
+  ]
+};
+
+const LYRICS = { A: SONG_A, B: SONG_B, C: SONG_C };
+
+/* ============================================================
+   State
+============================================================ */
+const el = (id) => document.getElementById(id);
+let current = {
+  state: "playing",
+  song: "A",
+  playing: true,
+  t: 0,
+  offset: 0,
+  last: 0,
+};
+let simTimer = null;
+let raf = null;
+
+/* ============================================================
+   Overlay drag
+============================================================ */
+const overlay = el("overlay");
+const desktop = el("desktop");
+let dragging = false, dx = 0, dy = 0;
+
+overlay.addEventListener("mousedown", (e) => {
+  if (current.state === "private") return;
+  dragging = true;
+  dx = e.clientX - overlay.offsetLeft;
+  dy = e.clientY - overlay.offsetTop;
+  overlay.classList.add("dragging");
+  e.preventDefault();
+});
+document.addEventListener("mousemove", (e) => {
+  if (!dragging) return;
+  let x = e.clientX - dx, y = e.clientY - dy;
+  const drect = desktop.getBoundingClientRect();
+  x = Math.max(4, Math.min(drect.width - overlay.offsetWidth - 4, x));
+  y = Math.max(30, Math.min(drect.height - overlay.offsetHeight - 4, y));
+  overlay.style.left = x + "px";
+  overlay.style.top = y + "px";
+});
+document.addEventListener("mouseup", () => {
+  if (!dragging) return;
+  dragging = false;
+  overlay.classList.remove("dragging");
+  log("pos", "overlay moved → x=" + overlay.style.left + " y=" + overlay.style.top);
+  log("pos", "bounds persisted to app-data/position.json");
+});
+
+/* ============================================================
+   LRC render + theme
+============================================================ */
+const linesEl = el("lines");
+function applyTheme(song) {
+  el("overlay-art").style.background = `linear-gradient(180deg, ${song.theme[0]}, ${song.theme[1]})`;
+  el("art").style.background = `linear-gradient(135deg, ${song.theme[0]}, ${song.theme[1]})`;
+}
+function renderLines() {
+  const song = LYRICS[current.song];
+  linesEl.innerHTML = song.lrc.map(([ms, line]) => `<p>${line}</p>`).join("");
+  applyTheme(song);
+}
+function lineAt(ms) {
+  const song = LYRICS[current.song];
+  let idx = 0;
+  for (let i = 0; i < song.lrc.length; i++) if (song.lrc[i][0] * 1000 <= ms) idx = i;
+  return idx;
+}
+function updateHighlight() {
+  const target = current.t + current.offset;
+  const idx = lineAt(target);
+  const ps = linesEl.children;
+  [...ps].forEach((p, k) => p.classList.toggle("active", k === idx));
+  const view = linesEl.parentElement.clientHeight;
+  const line = ps[idx];
+  linesEl.style.transform = `translateY(${view / 2 - line.offsetTop - line.offsetHeight / 2}px)`;
+}
+
+/* ============================================================
+   UI helpers
+============================================================ */
+function fmt(ms) {
+  const s = Math.floor(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+function setOverlayContent(mode) {
+  const box = linesEl.parentElement, ct = el("overlay-ct");
+  if (mode === "lyrics") { box.style.display = "flex"; ct.style.display = "none"; }
+  else { box.style.display = "none"; ct.style.display = "flex"; }
+}
+function setSteps(done, active, err) {
+  ["poll","cache","lrclib","parse","render","sync"].forEach((s) => {
+    const n = el("st-" + s);
+    n.classList.remove("done","active","err");
+    if (err && err.includes(s)) n.classList.add("err");
+    else if (active === s) n.classList.add("active");
+    else if (done.includes(s)) n.classList.add("done");
+  });
+}
+function log(kind, msg) {
+  const lg = el("log");
+  const div = document.createElement("div");
+  const time = new Date().toLocaleTimeString([], { hour12: false });
+  const cls = { ok:"ok", err:"err", warn:"warn", req:"req", dim:"dim", pos:"" }[kind] || "";
+  div.innerHTML = `<span class="t">${time}</span> ${msg}`;
+  div.className = cls;
+  lg.appendChild(div);
+  lg.scrollTop = lg.scrollHeight;
+}
+function badge(off) {
+  el("sync-badge").classList.toggle("show", off !== 0);
+  el("sync-badge").textContent = (off > 0 ? "+" : "") + (off / 1000).toFixed(1) + "s";
+  el("credit").innerHTML = off ? `Lyrics by LRCLIB · offset ${off > 0 ? "+" : ""}${(off / 1000).toFixed(1)}s` : "Lyrics by LRCLIB";
+}
+function hideOverlay() { overlay.classList.add("hidden"); }
+function showOverlay() { overlay.classList.remove("hidden"); }
+
+/* ============================================================
+   States
+============================================================ */
+function setState(state, opts = {}) {
+  current.state = state;
+  document.querySelectorAll("#state-btns .btn").forEach((b) => {
+    b.classList.toggle("active", b.dataset.state === state);
+  });
+  const song = LYRICS[current.song];
+  el("sw-track").textContent = song.track;
+  el("sw-artist").textContent = song.artist;
+  el("t-total").textContent = fmt(song.duration * 1000);
+  el("art").textContent = song.emoji;
+  el("ov-title").textContent = song.track;
+  el("ov-artist").textContent = song.artist;
+  applyTheme(song);
+
+  const ctrl = el("sw-play");
+  overlay.classList.remove("loading");
+
+  switch (state) {
+    case "playing":
+      renderLines(); setOverlayContent("lyrics"); showOverlay();
+      ctrl.textContent = "⏸";
+      setSteps(["poll","cache","parse"], "render", null);
+      log("req", "GET /me/player/currently-playing → 200");
+      log("ok", "cache hit: lyrics found for " + song.track + " (0 LRCLIB requests)");
+      log("ok", "LRC parsed: " + song.lrc.length + " lines · lineAt(progress + offset) → #" + (lineAt(current.t) + 1));
+      log("", "▶ now syncing…");
+      break;
+    case "paused":
+      ctrl.textContent = "▶";
+      setSteps(["poll"], "render", null);
+      log("dim", "⏸ is_playing=false — hold current line, stop interpolation");
+      break;
+    case "loading":
+      setOverlayContent("other");
+      el("overlay-ct").innerHTML = `<div id="spinner"></div><b>Loading lyrics</b>`;
+      showOverlay();
+      ctrl.textContent = "⏸";
+      setSteps(["poll"], "cache", null);
+      log("req", "track changed → " + song.track);
+      log("req", "cache miss: track_id not in SQLite");
+      log("req", "GET lrclib.net/api/get?track_name=" + encodeURIComponent(song.track) + "&artist_name=" + encodeURIComponent(song.artist) + "&album_name=&duration=" + song.duration);
+      break;
+    case "offset":
+      current.offset = opts.off ?? 600;
+      badge(current.offset);
+      setSteps(["poll","cache","parse"], "render", null);
+      log("warn", "nudge +0.6s (tray) — persisted to lyrics.offset_ms");
+      if (!el("sync-badge").classList.contains("show")) badge(current.offset);
+      setState("playing");
+      current.state = "offset";
+      document.querySelector('[data-state="offset"]').classList.add("active");
+      break;
+    case "nolyrics":
+      setOverlayContent("other");
+      el("overlay-ct").innerHTML = `<b>No lyrics found</b>No synced lyrics for this track yet`;
+      showOverlay();
+      ctrl.textContent = "⏸";
+      setSteps(["poll","cache"], "lrclib", null);
+      log("req", "GET /api/get → 404");
+      log("req", "fallback GET /api/search?q=" + encodeURIComponent(song.track) + " → 0 matches");
+      log("err", "no lyrics — cached miss, won't re-fetch on next play");
+      break;
+    case "instrumental":
+      setOverlayContent("other");
+      el("overlay-ct").innerHTML = `<b>🎵 Instrumental</b>`;
+      showOverlay();
+      setSteps(["poll","cache","lrclib"], "parse", null);
+      log("ok", "GET /api/get → instrumental:true — hiding lyrics");
+      break;
+    case "private":
+      hideOverlay();
+      ctrl.textContent = "⏸";
+      setSteps(["poll"], "", null);
+      log("dim", "204 No Content — nothing playing / private session → overlay hidden");
+      break;
+  }
+}
+
+/* ============================================================
+   Playback clock + sync (real-time animation)
+============================================================ */
+function tick(ts) {
+  const dt = ts - current.last;
+  current.last = ts;
+  if (current.state === "playing" && current.playing) {
+    const song = LYRICS[current.song];
+    current.t += dt;
+    if (current.t > song.duration * 1000) current.t = 0;
+    el("bar-fill").style.width = (current.t / (song.duration * 1000) * 100) + "%";
+    el("t-cur").textContent = fmt(current.t);
+    updateHighlight();
+  }
+  raf = requestAnimationFrame(tick);
+}
+raf = requestAnimationFrame(tick);
+
+/* ============================================================
+   Buttons
+============================================================ */
+document.querySelectorAll("#state-btns .btn").forEach((b) => {
+  b.addEventListener("click", () => {
+    clearInterval(simTimer);
+    current.playing = true;
+    setState(b.dataset.state);
+    if (b.dataset.state === "playing") { current.playing = true; log("", "▶ resume playback"); }
+  });
+});
+el("sw-play").addEventListener("click", () => {
+  current.playing = !current.playing;
+  if (current.playing && current.state !== "playing") setState("playing");
+});
+document.addEventListener("keydown", (e) => {
+  if (e.code === "Space") {
+    e.preventDefault();
+    current.playing = !current.playing;
+    if (current.playing && current.state !== "playing") setState("playing");
+    else if (current.playing) log("", "▶ resume");
+  }
+});
+el("reset").addEventListener("click", () => {
+  clearInterval(simTimer);
+  current.song = "A"; current.t = 0; current.offset = 0;
+  overlay.style.left = "560px"; overlay.style.top = "60px";
+  badge(0);
+  setState("playing");
+  log("", "reset — fresh state");
+});
+
+/* ============================================================
+   Full flow simulation
+============================================================ */
+const SIM_STEPS = [
+  { at: 0,    fn: () => { current.playing = false; setState("loading"); } },
+  { at: 1600, fn: () => { current.playing = true; current.song = "A"; current.t = 0; setState("playing"); } },
+  { at: 9000, fn: () => { current.playing = false; setState("offset"); } },
+  { at: 9500, fn: () => { current.playing = true; setState("offset"); } },
+  { at: 16000, fn: () => { current.playing = true; setState("nolyrics"); } },
+  { at: 21000, fn: () => { current.playing = true; setState("instrumental"); } },
+  { at: 25000, fn: () => { current.playing = true; setState("private"); } },
+  { at: 29000, fn: () => { current.playing = true; current.song = "C"; current.t = 0; setState("loading"); } },
+  { at: 30600, fn: () => { current.playing = true; setState("playing"); } },
+  { at: 37000, fn: () => { current.playing = false; setState("paused"); } },
+  { at: 40000, fn: () => { current.playing = true; setState("playing"); } },
+];
+
+el("simulate").addEventListener("click", () => {
+  clearInterval(simTimer);
+  current.playing = false;
+  current.song = "A"; current.t = 0; current.offset = 0;
+  overlay.style.left = "560px"; overlay.style.top = "60px";
+  badge(0);
+  setState("loading");
+  log("", "—— simulate: full user session ——");
+  const start = performance.now();
+  simTimer = setInterval(() => {
+    const t = performance.now() - start;
+    for (const s of SIM_STEPS) {
+      if (s.done) continue;
+      if (t >= s.at) { s.done = true; s.fn(); }
+    }
+    if (t > 42000) { clearInterval(simTimer); log("", "—— simulation complete ——"); }
+  }, 100);
+});
+
+/* ============================================================
+   Misc
+============================================================ */
+setInterval(() => {
+  const d = new Date();
+  el("menuclk").textContent = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  el("clock").textContent = d.toLocaleTimeString([], { hour12: false });
+}, 1000);
+
+/* init */
+badge(0);
+setState("playing");
+current.playing = true;
+log("dim", "app launched — PKCE auth OK, tokens in app-data/auth.json");
+log("dim", "watching for playback changes (poll 3s)");
+</script>
+</body>
+</html>

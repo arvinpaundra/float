@@ -1,0 +1,38 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "float",
+  "version": "0.1.0",
+  "identifier": "dev.float.lyrics",
+  "build": {
+    "frontendDist": "../ui/src"
+  },
+  "app": {
+    "macOSPrivateApi": true,
+    "windows": [
+      {
+        "label": "lyrics",
+        "url": "index.html",
+        "width": 320,
+        "height": 318,
+        "minWidth": 240,
+        "minHeight": 240,
+        "maxWidth": 560,
+        "maxHeight": 560,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "resizable": true,
+        "shadow": true,
+        "focus": false,
+        "visible": true,
+        "visibleOnAllWorkspaces": true,
+        "backgroundThrottling": "disabled",
+        "acceptFirstMouse": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  }
+}

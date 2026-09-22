@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>float</title>
+<style>
+  /* Spotify mini-player look. Measured from the reference (306×304 pt), then tightened on x: 30 pt header strip, art inset 4 pt
+     with 14 pt radius, info row (7 pt side inset) with 16 pt title / 12 pt artist, 1 pt border, 12 pt outer radius. */
+  :root { --top: #2b2b2e; --bottom: #141416; --header: 30px; --inset: 4px; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: transparent; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Hiragino Sans", sans-serif;
+    user-select: none;
+    -webkit-font-smoothing: antialiased;
+  }
+  .card {
+    width: 100%;
+    height: 100%;
+    display: grid;
+    /* header strip | art | info. Off-hover the strip collapses to the side inset (4 pt) so the art panel
+       gets an even border; hovering (or open settings) brings the 30 pt strip back. */
+    grid-template-rows: var(--inset) 1fr auto;
+    transition: opacity .6s ease, grid-template-rows .2s ease;
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,.18);
+    overflow: hidden;
+    background: #000;
+    position: relative; /* anchors the settings panel */
+  }
+  body.hover .card, body.settings-open .card { grid-template-rows: var(--header) 1fr auto; }
+  .card.faded, .card.user-hidden { opacity: 0; }
+
+  /* ---- header strip: close + drag dots, revealed on hover. Dragging it moves this window natively. ---- */
+  .header {
+    min-height: 0;
+    overflow: hidden; /* controls are clipped while the strip is collapsed */
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    padding: 0 5px;
+    cursor: grab;
+  }
+  .header > * { opacity: 0; transition: opacity .15s ease; }
+  body.hover .header > *, body.settings-open .header > * { opacity: 1; }
+  #open-settings {
+    justify-self: end;
+    width: 20px;
+    height: 20px;
+    display: grid;
+    place-items: center;
+    border: none;
+    background: none;
+    color: #d6d6d6;
+    cursor: default;
+  }
+  #open-settings:hover { color: #fff; }
+  body.settings-open #open-settings { color: #1ed760; } /* green while the panel is open, like the reference */
+  /* macOS traffic-light close button: 12 pt, #ff5f57, darker rim, dark-red ✕ glyph only on hover. */
+  #close {
+    justify-self: start;
+    margin-left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 0.5px solid #e0443e;
+    background: #ff5f57;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    cursor: default;
+  }
+  #close svg { opacity: 0; }
+  #close:hover svg { opacity: 1; }
+  #close:active { background: #bf4942; }
+  .dots {
+    display: grid;
+    grid-template-columns: repeat(4, 3px);
+    gap: 2px 3px;
+    pointer-events: none; /* clicks fall through to .header → drag */
+  }
+  .dots i { width: 3px; height: 3px; border-radius: 50%; background: #a0a0a0; }
+
+  /* ---- art panel: track-theme gradient, lyrics where the cover would be ---- */
+  .art {
+    margin: 0 var(--inset);
+    border-radius: 14px;
+    overflow: hidden;
+    background: linear-gradient(180deg, var(--top), var(--bottom));
+    display: grid;
+    /* One row = exactly the visible panel. Without this the implicit auto row is sized by content
+       (e.g. a 640 px cover image), the 83 % lyrics box grows past the clipped panel, and centring
+       puts the highlighted line below the view. */
+    grid-template-rows: minmax(0, 1fr);
+    justify-items: center;
+    align-items: start;
+    padding-top: 2.5%;
+    position: relative;
+    min-height: 0;
+  }
+  /* crossfade layer: the old gradient fades out over the new one (CSS can't transition gradients) */
+  .art::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, var(--prev-top, var(--top)), var(--prev-bottom, var(--bottom)));
+    opacity: 0;
+    pointer-events: none;
+  }
+  .art.fading::before { opacity: 1; animation: fadeout 1s ease forwards; }
+  @keyframes fadeout { to { opacity: 0; } }
+  /* Native scroll container: auto-scroll uses scrollTo (smooth), and the wheel works while hovered. */
+  .lyrics {
+    height: 83%;
+    aspect-ratio: 1;
+    max-width: 100%;
+    padding: 0 12px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
+    position: relative; /* offsetParent for the lines' offsetTop */
+    mask-image: linear-gradient(transparent, #000 25%, #000 75%, transparent);
+    -webkit-mask-image: linear-gradient(transparent, #000 25%, #000 75%, transparent);
+  }
+  .lyrics::-webkit-scrollbar { display: none; }
+  .lines {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+    align-items: center;
+    padding-block: 50%; /* room so the first and last lines can sit in the centre (box is square) */
+  }
+  .lines p {
+    color: rgba(255,255,255,.35);
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1.35;
+    text-align: center;
+    white-space: pre-line; /* same-timestamp lines are merged with "\n" */
+    transition: color .3s, transform .3s;
+  }
+  .lines p.active { color: #fff; transform: scale(1.05); }
+  /* unsynced lyrics: static, readable, start at the top, no highlight/auto-scroll */
+  .art.plain .lines { padding-block: 14px; }
+  .art.plain .lines p { color: rgba(255,255,255,.88); font-size: 14px; font-weight: 600; }
+  .ct {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    text-align: center;
+    color: rgba(255,255,255,.7);
+    font-size: 13px;
+  }
+  /* timing badge: this track's offset, or a 2 s flash for the global one */
+  #badge {
+    position: absolute;
+    top: 8px;
+    left: 9px;
+    z-index: 2;
+    padding: 1px 5px;
+    border-radius: 6px;
+    background: #f5a623;
+    color: #000;
+    font: 700 8px/1.4 ui-monospace, "SF Mono", monospace;
+    letter-spacing: .02em;
+    opacity: 0;
+    transition: opacity .2s ease;
+    pointer-events: none;
+  }
+  #badge.show { opacity: 1; }
+  /* ---- Connect: shown until the user signs in (the browser never opens on its own) ---- */
+  .connect {
+    position: absolute;
+    inset: 0;
+    display: none;
+    place-content: center;
+    justify-items: center;
+    gap: 10px;
+    padding: 20px;
+    text-align: center;
+  }
+  #connect {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 36px;
+    padding: 0 18px 0 12px;
+    border: none;
+    border-radius: 18px;
+    background: #1ed760;
+    color: #000;
+    font: 700 14px -apple-system, BlinkMacSystemFont, sans-serif;
+    letter-spacing: .01em;
+    cursor: default;
+    transition: transform .1s ease, background .15s ease;
+  }
+  #connect:hover { background: #3be477; transform: scale(1.03); }
+  #connect:active { transform: scale(.97); }
+  #connect:disabled { background: #1ed760; opacity: .55; transform: none; }
+  #connect-note { max-width: 220px; color: rgba(255,255,255,.75); font-size: 12px; line-height: 1.35; }
+  /* ---- "Album art" setting: the song's cover replaces the lyrics (Spotify mini-player look) ----
+     Same cell and size as the lyrics box; lyrics/status hide only once the cover has actually loaded. */
+  .cover {
+    grid-area: 1 / 1;
+    min-height: 0;
+    height: 83%;
+    aspect-ratio: 1;
+    max-width: 100%;
+    object-fit: cover;
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.45);
+    opacity: 0;
+    transition: opacity .4s ease;
+    pointer-events: none;
+  }
+  .lyrics { grid-area: 1 / 1; min-height: 0; }
+  .art.with-cover:not([data-mode="connect"]):has(.cover.loaded) .cover { opacity: 1; }
+  .art.with-cover:not([data-mode="connect"]):has(.cover.loaded) :is(.lyrics, .ct) { display: none; }
+  .art[data-mode="connect"] .cover { display: none; }
+  .lyrics, .ct, .connect { z-index: 1; }
+
+  .art[data-mode="lyrics"] .ct, .art[data-mode="connect"] .ct { display: none; }
+  .art[data-mode="message"] .lyrics, .art[data-mode="connect"] .lyrics { display: none; }
+  .art[data-mode="connect"] .connect { display: grid; }
+
+  /* ---- info row: title (running text when it overflows) + artist | play/pause + next ---- */
+  .info { padding: 11px 7px 13px; min-width: 0; display: flex; align-items: center; gap: 8px; }
+  .meta { flex: 1; min-width: 0; }
+  .controls { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+  .ctl {
+    width: 30px;
+    height: 30px;
+    display: grid;
+    place-items: center;
+    border: none;
+    border-radius: 50%;
+    background: none;
+    color: #fff;
+    opacity: .9;
+    cursor: default;
+    transition: opacity .15s, transform .1s;
+  }
+  .ctl:hover { opacity: 1; }
+  .ctl:active { transform: scale(.92); }
+  .ctl:disabled { opacity: .3; }
+  .ctl svg { display: block; }
+  #playpause .icon-play { display: none; }
+  body.paused #playpause .icon-play { display: block; }
+  body.paused #playpause .icon-pause { display: none; }
+  .title-wrap {
+    overflow: hidden;
+    white-space: nowrap;
+    mask-image: linear-gradient(90deg, #000 92%, transparent);
+    -webkit-mask-image: linear-gradient(90deg, #000 92%, transparent);
+  }
+  .title-wrap:not(.overflow) { mask-image: none; -webkit-mask-image: none; }
+  #title {
+    display: inline-block;
+    color: #fff;
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 1.25;
+  }
+  .title-wrap.overflow #title { animation: marquee var(--dur, 10s) ease-in-out infinite alternate; }
+  @keyframes marquee {
+    0%, 15% { transform: translateX(0); }
+    85%, 100% { transform: translateX(var(--shift, 0)); }
+  }
+  #artist {
+    margin-top: 2px;
+    color: #b3b3b3;
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* ---- settings panel (reference: Spotify "Miniplayer settings") ---- */
+  .settings {
+    position: absolute;
+    top: var(--header);
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 4;
+    display: none;
+    align-content: center;
+    gap: 14px;
+    padding: 0 22px 18px;
+    background: #000;
+  }
+  body.settings-open .settings { display: grid; }
+  .settings h2 { color: #fff; font-size: 17px; font-weight: 700; margin-bottom: 2px; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #fff; font-size: 15px; }
+  .row small { display: block; color: #9a9a9a; font-size: 11px; margin-top: 1px; }
+  .switch { position: relative; width: 38px; height: 22px; flex-shrink: 0; }
+  .switch input { position: absolute; inset: 0; opacity: 0; margin: 0; }
+  .switch span {
+    position: absolute;
+    inset: 0;
+    border-radius: 11px;
+    background: #535353;
+    transition: background .15s ease;
+    pointer-events: none;
+  }
+  .switch span::after {
+    content: "";
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    transition: transform .15s ease;
+  }
+  .switch input:checked + span { background: #1ed760; }
+  .switch input:checked + span::after { transform: translateX(16px); }
+  #account {
+    height: 28px;
+    padding: 0 14px;
+    border-radius: 14px;
+    border: 1px solid #7a7a7a;
+    background: none;
+    color: #fff;
+    font: 600 13px -apple-system, sans-serif;
+    cursor: default;
+  }
+  #account:hover { border-color: #fff; }
+  #done {
+    justify-self: center;
+    margin-top: 6px;
+    height: 34px;
+    padding: 0 24px;
+    border: none;
+    border-radius: 17px;
+    background: #1ed760;
+    color: #000;
+    font: 700 15px -apple-system, sans-serif;
+    cursor: default;
+  }
+  #done:hover { background: #3be477; }
+
+  /* ---- macOS-style resize: invisible edge/corner zones with native cursors (no drawn grip) ---- */
+  .resize { position: fixed; z-index: 5; }
+  #resize-r { top: var(--header); right: 0; bottom: 14px; width: 6px; cursor: ew-resize; }
+  #resize-b { left: 14px; right: 14px; bottom: 0; height: 6px; cursor: ns-resize; }
+  #resize-br { right: 0; bottom: 0; width: 14px; height: 14px; cursor: nwse-resize; }
+</style>
+</head>
+<body>
+  <div class="card" id="card">
+    <!-- bare drag region: only clicks on the strip itself drag, so the close button stays a button -->
+    <div class="header" data-tauri-drag-region>
+      <button id="close" title="Quit float" aria-label="Quit float">
+        <svg width="6" height="6" viewBox="0 0 6 6" aria-hidden="true">
+          <path d="M.75.75l4.5 4.5M5.25.75l-4.5 4.5" stroke="#4d0000" stroke-width="1.1" stroke-linecap="round"/>
+        </svg>
+      </button>
+      <div class="dots" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <button id="open-settings" title="Settings" aria-label="Settings">
+        <svg width="16" height="14" viewBox="0 0 16 14" aria-hidden="true">
+          <path d="M1 4h14M1 10h14" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+          <circle cx="10" cy="4" r="2.1" fill="#000" stroke="currentColor" stroke-width="1.3"/>
+          <circle cx="5.5" cy="10" r="2.1" fill="#000" stroke="currentColor" stroke-width="1.3"/>
+        </svg>
+      </button>
+    </div>
+    <div class="art" id="art" data-mode="message">
+      <img class="cover" id="cover" alt="" crossorigin="anonymous" referrerpolicy="no-referrer">
+      <div id="badge" aria-live="polite"></div>
+      <div class="lyrics" id="lyrics"><div class="lines" id="lines"></div></div>
+      <div class="ct"><p id="status">Connecting to Spotify…</p></div>
+      <div class="connect">
+        <button id="connect" aria-label="Connect to Spotify">
+          <!-- Spotify icon (circle + three arcs), black on the brand-green button -->
+          <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="12" fill="#000"/>
+            <path d="M5.9 9.2c3.9-1.3 8.6-1 12.2 1.1M6.6 12.5c3.3-1 7.1-.7 10 .9M7.3 15.7c2.6-.8 5.6-.6 7.9.7"
+                  stroke="#1ed760" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+          </svg>
+          Connect
+        </button>
+        <p id="connect-note"></p>
+      </div>
+    </div>
+    <div class="info">
+      <div class="meta">
+        <div class="title-wrap" id="title-wrap"><span id="title"></span></div>
+        <div id="artist"></div>
+      </div>
+      <div class="controls">
+        <button class="ctl" id="playpause" title="Play/Pause" aria-label="Play or pause" disabled>
+          <svg class="icon-pause" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+            <rect x="3" y="2" width="3.6" height="12" rx="1" fill="currentColor"/>
+            <rect x="9.4" y="2" width="3.6" height="12" rx="1" fill="currentColor"/>
+          </svg>
+          <svg class="icon-play" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M4 2.6v10.8c0 .8.9 1.3 1.5.8l8.3-5.4c.6-.4.6-1.2 0-1.6L5.5 1.8C4.9 1.3 4 1.8 4 2.6z" fill="currentColor"/>
+          </svg>
+        </button>
+        <button class="ctl" id="next" title="Next" aria-label="Next track" disabled>
+          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M2.5 2.9v10.2c0 .7.8 1.1 1.4.7l7.1-5.1c.5-.4.5-1.1 0-1.4L3.9 2.2c-.6-.4-1.4 0-1.4.7z" fill="currentColor"/>
+            <rect x="11.6" y="2" width="2" height="12" rx="1" fill="currentColor"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+    <div class="settings" role="dialog" aria-label="float settings">
+      <h2>float settings</h2>
+      <label class="row">
+        <span>Album art<small>Show the song's cover instead of lyrics</small></span>
+        <span class="switch"><input type="checkbox" id="show-cover"><span></span></span>
+      </label>
+      <div class="row">
+        <span>Spotify<small id="account-note">Connected</small></span>
+        <button id="account">Disconnect</button>
+      </div>
+      <button id="done">Done</button>
+    </div>
+  </div>
+  <div class="resize" id="resize-r" aria-hidden="true"></div>
+  <div class="resize" id="resize-b" aria-hidden="true"></div>
+  <div class="resize" id="resize-br" aria-hidden="true"></div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

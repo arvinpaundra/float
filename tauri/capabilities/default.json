@@ -1,0 +1,24 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default capability for the card window",
+  "windows": [
+    "lyrics"
+  ],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "oauth:allow-start",
+    "oauth:allow-cancel",
+    "sql:default",
+    "sql:allow-execute",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        {
+          "url": "https://accounts.spotify.com/*"
+        }
+      ]
+    }
+  ]
+}
