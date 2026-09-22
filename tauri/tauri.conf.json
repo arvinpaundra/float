@@ -4,7 +4,11 @@
   "version": "0.1.0",
   "identifier": "dev.float.lyrics",
   "build": {
-    "frontendDist": "../ui/src"
+    "frontendDist": "../ui/src",
+    "beforeBuildCommand": {
+      "script": "bun run build",
+      "cwd": ".."
+    }
   },
   "app": {
     "macOSPrivateApi": true,
@@ -33,6 +37,27 @@
     ],
     "security": {
       "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "app",
+      "dmg"
+    ],
+    "category": "Music",
+    "shortDescription": "Floating synced lyrics for Spotify",
+    "longDescription": "A floating, always-on-top mini player for macOS that shows line-synced lyrics (LRCLIB) for whatever is playing on Spotify.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.png"
+    ],
+    "macOS": {
+      "minimumSystemVersion": "14.0",
+      "signingIdentity": "-"
     }
   }
 }

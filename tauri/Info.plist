@@ -1,3 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict><key>NSAppSleepDisabled</key><true/></dict></plist>
+<plist version="1.0">
+<dict>
+  <!-- menu-bar app: no Dock icon or app menu, not even for a moment at launch -->
+  <key>LSUIElement</key>
+  <true/>
+  <!-- keep the poll loop running while the card is in the background -->
+  <key>NSAppSleepDisabled</key>
+  <true/>
+</dict>
+</plist>
