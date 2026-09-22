@@ -1,6 +1,6 @@
 [package]
 name = "float"
-version = "0.1.0"
+version = "0.1.1"
 description = "Floating synced-lyrics mini player for Spotify on macOS"
 edition = "2021"
 
