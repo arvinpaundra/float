@@ -6,14 +6,14 @@ use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::{TrayIcon, TrayIconBuilder};
 use tauri::{
-    Emitter, LogicalSize, Manager, PhysicalPosition, WindowEvent, Wry,
+    Emitter, LogicalPosition, LogicalSize, Manager, WindowEvent, Wry,
 };
 
 // One window: the card. Its header strip (close + drag dots) is part of the same webview, so dragging it
 // moves the card natively — no second window chasing the first.
 const LYRICS: &str = "lyrics";
 const HOVER_POLL: Duration = Duration::from_millis(100);
-const HOVER_MARGIN: f64 = 24.0; // physical px around the card that still counts as "over it"
+const HOVER_MARGIN: f64 = 12.0; // points around the card that still counts as "over it"
 
 static HOVER_SHOWN: AtomicBool = AtomicBool::new(false);
 static USER_HIDDEN: AtomicBool = AtomicBool::new(false); // "Hide float" from the menu
@@ -21,14 +21,26 @@ static USER_HIDDEN: AtomicBool = AtomicBool::new(false); // "Hide float" from th
 static PENDING_POS: Mutex<Option<(Pos, Instant)>> = Mutex::new(None);
 const SAVE_AFTER: Duration = Duration::from_millis(500);
 
+/// Card position in logical points (desktop coordinates). Points, not pixels: pixels depend on the
+/// display's scale (2× Retina vs 1× external), so a pixel position is wrong on the other screen.
 #[derive(Serialize, Deserialize)]
 struct Pos {
-    x: i32,
-    y: i32,
+    lx: f64,
+    ly: f64,
 }
 
+// ponytail: the old pixel-based position.json is simply ignored (one-time reset to the default spot)
 fn pos_file(app: &tauri::AppHandle) -> std::path::PathBuf {
     app.path().app_data_dir().expect("app data dir").join("position.json")
+}
+
+/// Is a saved position still on a connected display? (A monitor may have been unplugged since.)
+fn on_some_monitor(app: &tauri::AppHandle, p: &Pos) -> bool {
+    app.available_monitors().unwrap_or_default().iter().any(|m| {
+        let sf = m.scale_factor();
+        let (o, s) = (m.position().to_logical::<f64>(sf), m.size().to_logical::<f64>(sf));
+        p.lx >= o.x && p.lx < o.x + s.width && p.ly >= o.y && p.ly < o.y + s.height
+    })
 }
 
 fn load_pos(app: &tauri::AppHandle) -> Option<Pos> {
@@ -88,16 +100,22 @@ fn write_auth(app: tauri::AppHandle, json: String) -> Result<(), String> {
 }
 
 /// Is the cursor over the card (plus margin)? The card is click-through when not hovered, so its webview can't see hover.
+///
+/// Compared in logical points: tao converts the cursor with the PRIMARY display's scale but the window
+/// with its OWN display's scale, so on a second monitor with a different scale the pixel values disagree
+/// and the card could never be grabbed there.
 fn cursor_over_card(app: &tauri::AppHandle) -> Option<bool> {
     let l = app.get_webview_window(LYRICS)?;
-    let c = app.cursor_position().ok()?; // global NSEvent location, works while float is not focused
-    let p = l.outer_position().ok()?;
-    let s = l.outer_size().ok()?;
+    let primary = app.primary_monitor().ok()??.scale_factor();
+    let c = app.cursor_position().ok()?.to_logical::<f64>(primary); // global NSEvent location, works unfocused
+    let sf = l.scale_factor().ok()?;
+    let p = l.outer_position().ok()?.to_logical::<f64>(sf);
+    let s = l.outer_size().ok()?.to_logical::<f64>(sf);
     Some(
-        c.x >= p.x as f64 - HOVER_MARGIN
-            && c.x <= (p.x + s.width as i32) as f64 + HOVER_MARGIN
-            && c.y >= p.y as f64 - HOVER_MARGIN
-            && c.y <= (p.y + s.height as i32) as f64 + HOVER_MARGIN,
+        c.x >= p.x - HOVER_MARGIN
+            && c.x <= p.x + s.width + HOVER_MARGIN
+            && c.y >= p.y - HOVER_MARGIN
+            && c.y <= p.y + s.height + HOVER_MARGIN,
     )
 }
 
@@ -260,9 +278,9 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
             let _ = std::fs::create_dir_all(app.path().app_data_dir()?);
-            if let Some(p) = load_pos(app.handle()) {
+            if let Some(p) = load_pos(app.handle()).filter(|p| on_some_monitor(app.handle(), p)) {
                 if let Some(l) = app.get_webview_window(LYRICS) {
-                    let _ = l.set_position(PhysicalPosition::new(p.x, p.y));
+                    let _ = l.set_position(LogicalPosition::new(p.lx, p.ly));
                 }
             }
             if let Some(l) = app.get_webview_window(LYRICS) {
@@ -276,8 +294,10 @@ pub fn run() {
         .on_menu_event(|app, event| on_menu(app, event.id().as_ref()))
         .on_window_event(|window, event| {
             if let (WindowEvent::Moved(p), LYRICS) = (event, window.label()) {
+                let sf = window.scale_factor().unwrap_or(1.0);
+                let l = p.to_logical::<f64>(sf);
                 if let Ok(mut pending) = PENDING_POS.lock() {
-                    *pending = Some((Pos { x: p.x, y: p.y }, Instant::now()));
+                    *pending = Some((Pos { lx: l.x, ly: l.y }, Instant::now()));
                 }
             }
         })
