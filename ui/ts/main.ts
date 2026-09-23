@@ -30,8 +30,8 @@ const show = (p: Item, v: Verdict): void => {
   applyTiming()
   if (v.kind === "synced") view.lyrics(v.lines)
   else if (v.kind === "plain") view.plain(v.lines)
-  else if (v.kind === "instrumental") view.message("♪ Instrumental")
-  else view.message(p.type === "episode" ? "No lyrics for podcasts" : "No synced lyrics for this track")
+  else if (v.kind === "instrumental") view.message("♪ Instrumental", false)
+  else view.message(p.type === "episode" ? "No lyrics for podcasts" : "No synced lyrics for this track", false)
 }
 
 /** Per-track work in its own fiber; a newer track interrupts the older one (switch-to-latest). */
@@ -48,7 +48,7 @@ const makeLoader = (db: Database | null) =>
           Effect.tapError(() => Effect.sync(() => view.message("Lyrics unavailable, retrying…"))),
           Effect.retry({ schedule: Schedule.spaced("30 seconds"), times: 3 }),
           Effect.tap((v) => Effect.sync(() => show(p, v))),
-          Effect.catchAll((e) => Effect.sync(() => view.message(`Lyrics unavailable (${e.message})`))),
+          Effect.catchAll((e) => Effect.sync(() => view.message(`Lyrics unavailable (${e.message})`, false))),
         )
         const fiber = yield* Effect.all([theme, lyrics], { concurrency: "unbounded", discard: true }).pipe(
           Effect.catchAllCause((c) => Effect.logError("track load failed", Cause.pretty(c))),
@@ -245,7 +245,7 @@ const main = Effect.gen(function* () {
       RateLimited: (e) => Effect.sync(() => delayRateLimited(rateStreak++, e.quota)),
       Forbidden: (e) =>
         Effect.sync(() => {
-          view.message(`Spotify refused access: ${e.message}. Is this account on the app's user list and the owner's Premium active?`)
+          view.message(`Spotify refused access: ${e.message}. Is this account on the app's user list and the owner's Premium active?`, false)
           return DELAY.forbidden
         }),
       LoginRequired: () =>

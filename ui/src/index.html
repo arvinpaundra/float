@@ -256,11 +256,29 @@
     inset: 0;
     display: grid;
     place-items: center;
+    align-content: center;
+    gap: 12px;
     padding: 24px;
     text-align: center;
     color: rgba(255,255,255,.7);
     font-size: 13px;
   }
+
+  /* ---- loading spinner: an arc in the album's accent colour, for every waiting state ---- */
+  .spinner {
+    display: none;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: conic-gradient(from 0deg, transparent 0turn, var(--accent, #fff) .72turn, transparent .96turn);
+    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
+    mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
+    animation: spin .9s linear infinite;
+    filter: drop-shadow(0 0 5px rgba(255,255,255,.3)); /* stays visible when the accent matches the panel */
+  }
+  .ct.busy .spinner, .connect.busy .spinner { display: block; }
+  @keyframes spin { to { transform: rotate(1turn); } }
+  @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.4s; } }
   /* timing badge: this track's offset, or a 2 s flash for the global one */
   #badge {
     position: absolute;
@@ -513,8 +531,8 @@
       <div id="badge" aria-live="polite"></div>
       <div class="lyrics" id="lyrics"><div class="lines" id="lines"></div></div>
       <div class="upnext" id="upnext" aria-live="polite"><span id="upnext-text"></span></div>
-      <div class="ct"><p id="status">Connecting to Spotify…</p></div>
-      <div class="connect">
+      <div class="ct busy" id="ct"><span class="spinner" aria-hidden="true"></span><p id="status">Connecting to Spotify…</p></div>
+      <div class="connect" id="connect-panel">
         <button id="connect" aria-label="Connect to Spotify">
           <!-- Spotify icon (circle + three arcs), black on the brand-green button -->
           <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
@@ -524,6 +542,7 @@
           </svg>
           Connect
         </button>
+        <span class="spinner" aria-hidden="true"></span>
         <p id="connect-note"></p>
       </div>
     </div>

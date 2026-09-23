@@ -102,11 +102,14 @@ export const view = {
     $("artist").textContent = p.artist
     requestAnimationFrame(updateMarquee) // measure after layout
     $("status").textContent = status
+    $("ct").classList.add("busy") // a new track always starts by loading its lyrics
     setMode("message")
     view.visible(true)
   },
-  message(text: string): void {
+  /** `busy` (default): float is waiting on something, so the spinner runs. Verdicts pass false. */
+  message(text: string, busy = true): void {
     $("status").textContent = text
+    $("ct").classList.toggle("busy", busy)
     setMode("message")
     view.visible(true)
   },
@@ -161,6 +164,7 @@ export const view = {
     $("title-wrap").classList.remove("overflow")
     ;($("connect") as HTMLButtonElement).disabled = false
     $("connect-note").textContent = note ?? ""
+    $("connect-panel").classList.remove("busy")
     view.playing(null)
     setMode("connect")
     view.visible(true)
@@ -169,6 +173,7 @@ export const view = {
   connecting(): void {
     ;($("connect") as HTMLButtonElement).disabled = true
     $("connect-note").textContent = "Approve float in your browser…"
+    $("connect-panel").classList.add("busy")
     setMode("connect")
     view.visible(true)
   },
