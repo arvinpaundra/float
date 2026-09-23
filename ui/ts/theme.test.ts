@@ -24,3 +24,14 @@ test("dominant picks the vivid majority over grey/black, falls back on empty", (
   assert.ok(c[2] > c[0] * 2 && c[2] > c[1] * 2, `blue wins, got ${c}`)
   assert.deepEqual(themeFromPixels(solid(0, 0, 0, 10, 0)), DEFAULT_THEME) // fully transparent
 })
+
+test("accent stays vivid (the glow colour is not the darkened text background)", () => {
+  const t = themeFromPixels(solid(208, 35, 26))
+  const [ar, ag, ab] = rgbOf(t.accent)
+  const [tr] = rgbOf(t.top)
+  assert.ok(ar >= tr, "accent is never darker than the gradient") // vivid art needs no darkening: equal
+  assert.ok(ar > ag * 2 && ar > ab * 2, `accent keeps the hue, got ${t.accent}`)
+  const dark = themeFromPixels(solid(30, 10, 8)) // dim art: accent is lifted so it still glows
+  assert.ok(Math.max(...rgbOf(dark.accent)) > 100)
+  assert.ok(rgbOf(dark.accent)[0] > rgbOf(dark.top)[0], "lifted above the near-black gradient")
+})

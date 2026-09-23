@@ -49,21 +49,49 @@ export const currentlyPlaying = (accessToken: string) =>
     }
   }).pipe(Effect.timeoutFail({ duration: "10 seconds", onTimeout: () => new NetworkError({ message: "currently-playing timed out" }) }))
 
+/** Next item in the user's queue, or null when the queue is empty / unreadable. Uses the scopes we already have. */
+export const upNext = (accessToken: string) =>
+  Effect.gen(function* () {
+    const res = yield* Effect.tryPromise({
+      try: (signal) =>
+        fetch("https://api.spotify.com/v1/me/player/queue", { headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store", signal }),
+      catch: (e) => new NetworkError({ message: `queue: ${String(e)}` }),
+    })
+    if (res.status === 401) return yield* Effect.fail(new Unauthorized())
+    if (!res.ok) return null // 403/404/429: the heads-up is optional, never worth an error on screen
+    const body = safeJson(yield* Effect.tryPromise({ try: () => res.text(), catch: (e) => new NetworkError({ message: String(e) }) }))
+    const next = Array.isArray(body?.queue) ? body.queue[0] : null
+    return next ? nextLabel(next) : null
+  }).pipe(Effect.timeoutFail({ duration: "10 seconds", onTimeout: () => new NetworkError({ message: "queue timed out" }) }))
+
+/** Pure: a queue entry → "Song — Artist" (episodes have no artists). */
+export const nextLabel = (item: Record<string, any>): string | null => {
+  const name = typeof item?.name === "string" ? item.name : ""
+  if (!name) return null
+  const artist = (item?.artists ?? [])
+    .map((a: Record<string, any>) => (typeof a?.name === "string" ? a.name : ""))
+    .filter(Boolean)
+    .join(", ")
+  return artist ? `${name} — ${artist}` : name
+}
+
 // ---- playback controls (Premium + user-modify-playback-state) ----
-export type Control = "pause" | "play" | "next"
+export type Control = "pause" | "play" | "next" | "seek"
 const CONTROL: Record<Control, { readonly method: "PUT" | "POST"; readonly path: string }> = {
   pause: { method: "PUT", path: "/pause" },
   play: { method: "PUT", path: "/play" }, // no body = resume the current context
   next: { method: "POST", path: "/next" },
+  seek: { method: "PUT", path: "/seek" }, // needs ?position_ms=
 }
 
 /** One control call. 2xx → done; 403 → Forbidden (Premium / scope / restriction); 404 → HttpError (no active device). */
-export const control = (cmd: Control) => (accessToken: string) =>
+export const control = (cmd: Control, positionMs?: number) => (accessToken: string) =>
   Effect.gen(function* () {
     const { method, path } = CONTROL[cmd]
+    const query = cmd === "seek" ? `?position_ms=${Math.max(0, Math.round(positionMs ?? 0))}` : ""
     const res = yield* Effect.tryPromise({
       try: (signal) =>
-        fetch(`https://api.spotify.com/v1/me/player${path}`, { method, headers: { Authorization: `Bearer ${accessToken}` }, signal }),
+        fetch(`https://api.spotify.com/v1/me/player${path}${query}`, { method, headers: { Authorization: `Bearer ${accessToken}` }, signal }),
       catch: (e) => new NetworkError({ message: `${cmd}: ${String(e)}` }),
     })
     if (res.ok) return

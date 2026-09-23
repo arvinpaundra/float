@@ -5,15 +5,15 @@ import type Database from "@tauri-apps/plugin-sql"
 import { Cause, Effect, Fiber, Queue, Ref, Schedule } from "effect"
 import { makeAuth } from "./auth.ts"
 import * as cache from "./cache.ts"
-import { applySample, hold, makeClock, position, reset, resume } from "./clock.ts"
+import { applySample, hold, makeClock, position, reset, resume, seekTo } from "./clock.ts"
 import { installResize } from "./resize.ts"
 import { GLOBAL_OFFSET_MS, LEAD_MS } from "./config.ts"
 import { lyricsFor, type Verdict } from "./lyrics.ts"
 import type { Playback } from "./playback.ts"
 import { DELAY, delayPlaying, delayRateLimited } from "./schedule.ts"
-import { control, controlProblem, currentlyPlaying, type Control } from "./spotify.ts"
+import { control, controlProblem, currentlyPlaying, upNext, type Control } from "./spotify.ts"
 import { applyNudge, offsetLabel, parseMenu } from "./timing.ts"
-import { startRender, themeFromUrl, view } from "./view.ts"
+import { fontSize, installCopy, onLineClick, startRender, themeFromUrl, view } from "./view.ts"
 
 type Item = Extract<Playback, { kind: "item" }>
 
@@ -81,6 +81,12 @@ const main = Effect.gen(function* () {
   if (savedOffset !== null && Number.isFinite(Number(savedOffset))) timing.global = Number(savedOffset)
   applyTiming()
   view.showCover((yield* setting("show_cover")) === "1")
+  view.fontSize(fontSize(yield* setting("font_size")))
+  view.teleprompter((yield* setting("teleprompter")) === "1")
+  installCopy()
+  const frostedOn = (yield* setting("frosted")) === "1"
+  view.frosted(frostedOn)
+  yield* Effect.promise(() => invoke("set_frosted", { on: frostedOn }))
   const loader = yield* makeLoader(db)
   const auth = yield* makeAuth
   const wake = yield* Queue.unbounded<void>() // cuts the poll sleep short (e.g. after "Sign in again")
@@ -112,6 +118,22 @@ const main = Effect.gen(function* () {
   const el = (id: string) => document.getElementById(id)!
   el("open-settings").addEventListener("click", () => view.settings(!document.body.classList.contains("settings-open")))
   el("done").addEventListener("click", () => view.settings(false))
+  el("teleprompter").addEventListener("change", (e) => {
+    const on = (e.target as HTMLInputElement).checked
+    view.teleprompter(on)
+    void Effect.runFork(saveSetting("teleprompter", on ? "1" : "0"))
+  })
+  el("font-size").addEventListener("input", (e) => {
+    const px = fontSize((e.target as HTMLInputElement).value)
+    view.fontSize(px)
+    void Effect.runFork(saveSetting("font_size", String(px)))
+  })
+  el("frosted").addEventListener("change", (e) => {
+    const on = (e.target as HTMLInputElement).checked
+    view.frosted(on)
+    void invoke("set_frosted", { on })
+    void Effect.runFork(saveSetting("frosted", on ? "1" : "0"))
+  })
   el("show-cover").addEventListener("change", (e) => {
     const on = (e.target as HTMLInputElement).checked
     view.showCover(on)
@@ -156,12 +178,13 @@ const main = Effect.gen(function* () {
   void listen<boolean>("float:visible", (e) => view.userVisible(e.payload))
 
   // ---- play/pause + next: optimistic UI, then a quick re-poll to confirm what Spotify did ----
-  const onControl = (cmd: Control) =>
+  const onControl = (cmd: Control, positionMs?: number) =>
     Effect.gen(function* () {
       if (cmd === "pause") hold(clock, performance.now())
       if (cmd === "play") resume(clock, performance.now())
-      if (cmd !== "next") view.playing(cmd === "play")
-      yield* auth.withToken(control(cmd))
+      if (cmd === "seek") seekTo(clock, positionMs ?? 0, performance.now())
+      if (cmd === "pause" || cmd === "play") view.playing(cmd === "play")
+      yield* auth.withToken(control(cmd, positionMs))
       yield* Effect.sleep("400 millis") // Spotify's state lags the command slightly
       yield* Queue.offer(wake, undefined)
     }).pipe(
@@ -176,6 +199,8 @@ const main = Effect.gen(function* () {
     void Effect.runFork(onControl(document.body.classList.contains("paused") ? "play" : "pause")),
   )
   document.getElementById("next")!.addEventListener("click", () => void Effect.runFork(onControl("next")))
+  // click a lyric line → jump there (the view hands back the playback position for that line)
+  onLineClick((positionMs) => void Effect.runFork(onControl("seek", positionMs)))
 
   /** One poll → the delay before the next one (ms). */
   const pollOnce = Effect.gen(function* () {
@@ -195,6 +220,15 @@ const main = Effect.gen(function* () {
       view.track(p, "Loading lyrics…")
       view.cover(p.coverUrl)
       yield* loader.load(p)
+      // the heads-up is optional: fetch it in the background, never delay or fail the poll
+      yield* Effect.forkDaemon(
+        auth
+          .withToken(upNext)
+          .pipe(
+            Effect.tap((label) => Effect.sync(() => view.upNext(label))),
+            Effect.catchAllCause(() => Effect.void),
+          ),
+      )
     } else view.visible(true)
     if (p.progressMs === null) {
       hold(clock, s.recvAt)

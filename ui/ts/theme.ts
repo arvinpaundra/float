@@ -2,8 +2,9 @@
 export interface Theme {
   readonly top: string
   readonly bottom: string
+  readonly accent: string // vivid (not darkened): the ambient glow only, never behind text
 }
-export const DEFAULT_THEME: Theme = { top: "#2b2b2e", bottom: "#141416" } // static dark fallback
+export const DEFAULT_THEME: Theme = { top: "#2b2b2e", bottom: "#141416", accent: "#3c3c46" } // static dark fallback
 
 type RGB = readonly [number, number, number]
 
@@ -73,5 +74,7 @@ export const themeFromPixels = (rgba: Uint8ClampedArray | Uint8Array): Theme => 
   const c = dominant(rgba)
   if (!c) return DEFAULT_THEME
   const top = darkenFor(c)
-  return { top: hex(top), bottom: hex(scale(top, 0.55)) }
+  // accent: the dominant colour kept bright, lifted a little so dark art still glows
+  const lift = Math.max(1, 150 / Math.max(1, Math.max(c[0], c[1], c[2])))
+  return { top: hex(top), bottom: hex(scale(top, 0.55)), accent: hex(scale(c, lift)) }
 }
