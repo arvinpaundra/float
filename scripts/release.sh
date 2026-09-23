@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Build a float release: checks → universal .app → dist/v<version>/{float-<version>-darwin-universal.zip, manifest.json}
-# (+ the .dmg). install.sh consumes exactly these two files from the GitHub release.
+# Build a macOS float release: checks → universal .app → dist/v<version>/{float-<version>-darwin-universal.zip,
+# manifest.json} (+ the .dmg). install.sh consumes exactly these two files from the GitHub release.
+# CI (.github/workflows/release.yml) builds macOS and Linux and writes a manifest covering both.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -68,17 +69,7 @@ rm -rf "$out" && mkdir -p "$out"
 echo "==> Packaging $out/$asset"
 ditto -c -k --sequesterRsrc --keepParent "$bundle/macos/float.app" "$out/$asset"
 cp "$bundle"/dmg/*.dmg "$out/"
-sha="$(shasum -a 256 "$out/$asset" | cut -d' ' -f1)"
-size="$(stat -f%z "$out/$asset")"
-cat > "$out/manifest.json" <<EOF
-{
-  "version": "$VERSION",
-  "asset": "$asset",
-  "sha256": "$sha",
-  "size": $size,
-  "minimumSystemVersion": "14.0"
-}
-EOF
+scripts/manifest.sh "$VERSION" "$out/$asset" > "$out/manifest.json"
 ls -lh "$out"
 
 if [[ "$INSTALL" == "1" ]]; then

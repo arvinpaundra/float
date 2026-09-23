@@ -422,6 +422,7 @@
   }
   .settings::-webkit-scrollbar { display: none; }
   body.settings-open .settings { display: grid; }
+  body:not([data-platform="macos"]) [data-macos-only] { display: none; } /* window vibrancy is macOS-only */
   .settings h2 { color: #fff; font-size: 17px; font-weight: 700; margin-bottom: 2px; }
   .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #fff; font-size: 15px; }
   .row small { display: block; color: #9a9a9a; font-size: 11px; margin-top: 1px; }
@@ -575,7 +576,7 @@
         <span>Album art<small>Show the song's cover instead of lyrics</small></span>
         <span class="switch"><input type="checkbox" id="show-cover"><span></span></span>
       </label>
-      <label class="row">
+      <label class="row" data-macos-only>
         <span>Frosted glass<small>Blur the desktop behind the card</small></span>
         <span class="switch"><input type="checkbox" id="frosted"><span></span></span>
       </label>

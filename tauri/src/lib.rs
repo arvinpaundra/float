@@ -71,11 +71,33 @@ fn resize_lyrics(app: tauri::AppHandle, w: f64, h: f64) {
 }
 
 /// Copy to the clipboard. The webview blocks both navigator.clipboard and execCommand under tauri://,
-/// so hand it to pbcopy — no plugin, no extra dependency.
+/// so pipe it to the platform's clipboard tool — no plugin, no extra dependency.
 #[tauri::command]
 fn copy_text(text: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    let tools: &[(&str, &[&str])] = &[("pbcopy", &[])];
+    // Wayland first, then X11; whichever the session provides
+    #[cfg(not(target_os = "macos"))]
+    let tools: &[(&str, &[&str])] = &[
+        ("wl-copy", &[]),
+        ("xclip", &["-selection", "clipboard"]),
+        ("xsel", &["--clipboard", "--input"]),
+    ];
+
+    let mut last = String::from("no clipboard tool found");
+    for (tool, args) in tools {
+        match pipe_to(tool, args, &text) {
+            Ok(()) => return Ok(()),
+            Err(e) => last = format!("{tool}: {e}"),
+        }
+    }
+    Err(last)
+}
+
+fn pipe_to(tool: &str, args: &[&str], text: &str) -> Result<(), String> {
     use std::io::Write;
-    let mut child = std::process::Command::new("/usr/bin/pbcopy")
+    let mut child = std::process::Command::new(tool)
+        .args(args)
         .stdin(std::process::Stdio::piped())
         .spawn()
         .map_err(|e| e.to_string())?;
@@ -87,14 +109,25 @@ fn copy_text(text: String) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     match child.wait() {
         Ok(s) if s.success() => Ok(()),
-        Ok(s) => Err(format!("pbcopy exited with {s}")),
+        Ok(s) => Err(format!("exited with {s}")),
         Err(e) => Err(e.to_string()),
     }
 }
 
+/// Which OS float is running on, so the UI can hide macOS-only settings.
+#[tauri::command]
+fn host_platform() -> &'static str {
+    std::env::consts::OS
+}
+
 /// "Frosted glass" setting: real macOS vibrancy behind the card (CSS backdrop-filter can't see the desktop).
 #[tauri::command]
+#[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
 fn set_frosted(app: tauri::AppHandle, on: bool) {
+    #[cfg(not(target_os = "macos"))]
+    let _ = (app, on); // window effects are macOS-only; the setting is hidden elsewhere
+    #[cfg(target_os = "macos")]
+    {
     use tauri::utils::config::WindowEffectsConfig;
     use tauri::window::{Effect, EffectState};
     let Some(l) = app.get_webview_window(LYRICS) else { return };
@@ -108,6 +141,7 @@ fn set_frosted(app: tauri::AppHandle, on: bool) {
     } else {
         l.set_effects(None)
     };
+    }
 }
 
 /// Header close button (the tray menu has Quit too). float has no Dock icon (Accessory policy).
@@ -312,6 +346,7 @@ pub fn run() {
             resize_lyrics,
             quit,
             copy_text,
+            host_platform,
             set_frosted,
             read_auth,
             write_auth
