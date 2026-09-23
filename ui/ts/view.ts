@@ -1,5 +1,6 @@
 // DOM: mini-player card — themed art panel (lyrics or a status message) + title/artist info row.
 // textContent only (never innerHTML) — lyrics and track names are untrusted.
+import { invoke } from "@tauri-apps/api/core"
 import { position, type Clock } from "./clock.ts"
 import { lineAt, type Line } from "./lrc.ts"
 import type { Playback } from "./playback.ts"
@@ -12,12 +13,54 @@ const $ = (id: string): HTMLElement => {
   return el
 }
 
+/** The "up next" heads-up appears this long before the track ends. */
+export const UP_NEXT_LEAD_MS = 5000
+
+/** Pure: show the heads-up? Only while playing, with a known next track, in the last seconds. */
+export const showUpNext = (remainingMs: number, hasNext: boolean, playing: boolean): boolean =>
+  hasNext && playing && remainingMs <= UP_NEXT_LEAD_MS && remainingMs > -500
+
+export const FONT_MIN = 12
+export const FONT_MAX = 24
+export const FONT_DEFAULT = 15
+
+/** Pure: a stored/queried lyrics size clamped into range, falling back to the default. */
+export const fontSize = (value: string | number | null): number => {
+  const n = Math.round(Number(value))
+  return Number.isFinite(n) && n >= FONT_MIN && n <= FONT_MAX ? n : FONT_DEFAULT
+}
+
+/** A gap before the first line this long shows the countdown instead of an empty card. */
+export const INTRO_GAP_MS = 4000
+/** Dots shown while an instrumental gap runs. */
+export const GAP_DOTS = 3
+
+/** Pure: how many dots are lit during a gap, 0…GAP_DOTS (times in ms). */
+export const gapDots = (now: number, start: number, end: number): number => {
+  if (!(end > start)) return 0
+  const p = (now - start) / (end - start)
+  return Math.max(0, Math.min(GAP_DOTS, Math.floor(p * GAP_DOTS) + 1))
+}
+
+/** Pure: a long intro becomes a leading gap line, so the countdown runs before the first lyric. */
+export const withIntro = (ls: readonly Line[]): readonly Line[] =>
+  ls.length && ls[0]!.t >= INTRO_GAP_MS && ls[0]!.text !== "" ? [{ t: 0, text: "" }, ...ls] : ls
+
 let lines: readonly Line[] = []
 let offsetMs = 0 // lead + global + per-track offset, added to the clock before lookup
 let badgeText: string | null = null // persistent badge (this track's offset)
 let flashTimer: ReturnType<typeof setTimeout> | undefined
 let active = -2 // -2 = force re-layout on next frame
 let theme: Theme = DEFAULT_THEME
+let upNextLabel: string | null = null
+let trackDuration = 0
+let headsUpShown = false
+
+const showHeadsUp = (on: boolean): void => {
+  if (on === headsUpShown) return
+  headsUpShown = on
+  $("upnext").classList.toggle("show", on)
+}
 
 const setMode = (mode: "lyrics" | "message" | "connect"): void => {
   $("art").dataset.mode = mode
@@ -42,7 +85,16 @@ addEventListener("resize", updateMarquee)
 
 export const view = {
   /** New track: title/artist in the info row, a status line in the art panel until lyrics (or a verdict) arrive. */
+  /** Next track in the queue ("Song — Artist"), shown as a heads-up near the end. */
+  upNext(label: string | null): void {
+    upNextLabel = label
+    if (!label) showHeadsUp(false)
+    else $("upnext-text").textContent = label
+  },
   track(p: Item, status: string): void {
+    trackDuration = p.durationMs
+    upNextLabel = null
+    showHeadsUp(false)
     lines = []
     active = -2
     $("title-wrap").classList.remove("overflow") // restart the marquee from the left
@@ -50,22 +102,36 @@ export const view = {
     $("artist").textContent = p.artist
     requestAnimationFrame(updateMarquee) // measure after layout
     $("status").textContent = status
+    $("ct").classList.add("busy") // a new track always starts by loading its lyrics
     setMode("message")
     view.visible(true)
   },
-  message(text: string): void {
+  /** `busy` (default): float is waiting on something, so the spinner runs. Verdicts pass false. */
+  message(text: string, busy = true): void {
     $("status").textContent = text
+    $("ct").classList.toggle("busy", busy)
     setMode("message")
     view.visible(true)
   },
   lyrics(ls: readonly Line[]): void {
     $("art").classList.remove("plain")
-    lines = ls
+    lines = withIntro(ls)
     active = -2
     $("lines").replaceChildren(
-      ...ls.map((l) => {
+      ...lines.map((l) => {
         const p = document.createElement("p")
-        p.textContent = l.text || "♪" // empty LRC line = instrumental gap
+        if (l.text) p.textContent = l.text
+        else {
+          // instrumental gap (or a long intro): ♪ marks that light up as the gap runs out
+          p.className = "gap"
+          p.append(
+            ...Array.from({ length: GAP_DOTS }, () => {
+              const note = document.createElement("i")
+              note.textContent = "♪"
+              return note
+            }),
+          )
+        }
         return p
       }),
     )
@@ -98,6 +164,7 @@ export const view = {
     $("title-wrap").classList.remove("overflow")
     ;($("connect") as HTMLButtonElement).disabled = false
     $("connect-note").textContent = note ?? ""
+    $("connect-panel").classList.remove("busy")
     view.playing(null)
     setMode("connect")
     view.visible(true)
@@ -106,6 +173,7 @@ export const view = {
   connecting(): void {
     ;($("connect") as HTMLButtonElement).disabled = true
     $("connect-note").textContent = "Approve float in your browser…"
+    $("connect-panel").classList.add("busy")
     setMode("connect")
     view.visible(true)
   },
@@ -116,6 +184,25 @@ export const view = {
   cover(url: string | null): void {
     coverUrl = url !== null && url.startsWith("https://i.scdn.co/") ? url : null
     applyCover()
+  },
+  /** Teleprompter: show only the current line (large) and the next one (dim). */
+  teleprompter(on: boolean): void {
+    document.body.classList.toggle("teleprompter", on)
+    ;($("teleprompter") as HTMLInputElement).checked = on
+  },
+  /** Lyrics font size in px (the gap ♪ and the unsynced view scale with it). */
+  fontSize(px: number): void {
+    const size = fontSize(px)
+    document.documentElement.style.setProperty("--lyric-size", `${size}px`)
+    const slider = $("font-size") as HTMLInputElement
+    slider.value = String(size)
+    slider.style.setProperty("--fill", `${((size - FONT_MIN) / (FONT_MAX - FONT_MIN)) * 100}%`)
+    $("font-size-label").textContent = `${size} px`
+  },
+  /** "Frosted glass": the translucent card styling (Rust applies the window vibrancy itself). */
+  frosted(on: boolean): void {
+    document.body.classList.toggle("frosted", on)
+    ;($("frosted") as HTMLInputElement).checked = on
   },
   showCover(on: boolean): void {
     coverOn = on
@@ -170,6 +257,7 @@ export const view = {
     art.style.setProperty("--prev-bottom", theme.bottom)
     art.style.setProperty("--top", t.top)
     art.style.setProperty("--bottom", t.bottom)
+    art.style.setProperty("--accent", t.accent)
     art.classList.remove("fading")
     void art.offsetWidth // restart the animation
     art.classList.add("fading")
@@ -195,6 +283,50 @@ const showBadge = (text: string | null): void => {
   const b = $("badge")
   if (text) b.textContent = text
   b.classList.toggle("show", text !== null)
+}
+
+/** Copy via Rust (pbcopy): the webview blocks navigator.clipboard and execCommand under tauri://. */
+const copyText = async (text: string): Promise<boolean> => {
+  try {
+    await invoke("copy_text", { text })
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Right-click a lyric line to copy it (left-click seeks). Right-click elsewhere copies "Title — Artist". */
+export const installCopy = (): void => {
+  const copy = (text: string): void => {
+    if (!text) return
+    void copyText(text).then((ok) => view.flash(ok ? "Copied" : "Copy failed"))
+  }
+  $("lines").addEventListener("contextmenu", (e) => {
+    const p = (e.target as HTMLElement).closest("p")
+    if (!p || p.classList.contains("gap")) return
+    e.preventDefault()
+    e.stopPropagation()
+    copy(p.textContent ?? "")
+  })
+  $("card").addEventListener("contextmenu", (e) => {
+    e.preventDefault()
+    const title = $("title").textContent ?? ""
+    const artist = $("artist").textContent ?? ""
+    copy(title && artist ? `${title} — ${artist}` : title)
+  })
+}
+
+/**
+ * Click a lyric line to jump there: the callback gets the playback position that puts this line on screen
+ * (its timestamp minus the offsets the render loop adds).
+ */
+export const onLineClick = (seek: (positionMs: number) => void): void => {
+  $("lines").addEventListener("click", (e) => {
+    const p = (e.target as HTMLElement).closest("p")
+    if (!p || !lines.length) return
+    const line = lines[Array.prototype.indexOf.call($("lines").children, p)]
+    if (line) seek(Math.max(0, line.t - offsetMs))
+  })
 }
 
 /** Load album art (CORS: i.scdn.co sends ACAO *) and derive the theme. Resolves DEFAULT_THEME on any failure. */
@@ -258,6 +390,7 @@ export const startRender = (clock: Clock): void => {
   // Lyrics box changed size (window resize, header strip collapsing/expanding on hover) → re-centre, no animation.
   new ResizeObserver(() => (scrolledTo = -2)).observe($("lyrics"))
   let wasVisible = false
+  let litDots = -1
   const frame = (): void => {
     // display:none throws away a scroll container's position: whenever the lyrics box comes back
     // (album art off, message/Connect → lyrics), jump to the current line again.
@@ -270,6 +403,18 @@ export const startRender = (clock: Clock): void => {
         if (active === -2) scrolledTo = -2 // fresh lyrics
         highlight(i)
         active = i
+        litDots = -1
+      }
+      // "up next" heads-up in the last seconds of the track
+      showHeadsUp(showUpNext(trackDuration - position(clock, performance.now()), upNextLabel !== null, clock.playing))
+      // instrumental gap: light the dots as it runs out (DOM touched only when the count changes)
+      const gap = i >= 0 ? lines[i] : undefined
+      if (gap && !gap.text) {
+        const lit = gapDots(position(clock, performance.now()) + offsetMs, gap.t, lines[i + 1]?.t ?? gap.t)
+        if (lit !== litDots) {
+          litDots = lit
+          ;($("lines").children[i] as HTMLElement | undefined)?.setAttribute("data-lit", String(lit))
+        }
       }
       if (i !== scrolledTo && performance.now() >= userScrollUntil && scrollToLine(i, scrolledTo !== -2)) {
         scrolledTo = i // jumped on fresh lyrics/resize/re-show, glided otherwise

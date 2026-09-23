@@ -70,6 +70,46 @@ fn resize_lyrics(app: tauri::AppHandle, w: f64, h: f64) {
     let _ = l.set_size(LogicalSize::new(w.clamp(240.0, 560.0), h.clamp(240.0, 560.0)));
 }
 
+/// Copy to the clipboard. The webview blocks both navigator.clipboard and execCommand under tauri://,
+/// so hand it to pbcopy — no plugin, no extra dependency.
+#[tauri::command]
+fn copy_text(text: String) -> Result<(), String> {
+    use std::io::Write;
+    let mut child = std::process::Command::new("/usr/bin/pbcopy")
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    child
+        .stdin
+        .take()
+        .ok_or("no stdin")?
+        .write_all(text.as_bytes())
+        .map_err(|e| e.to_string())?;
+    match child.wait() {
+        Ok(s) if s.success() => Ok(()),
+        Ok(s) => Err(format!("pbcopy exited with {s}")),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+/// "Frosted glass" setting: real macOS vibrancy behind the card (CSS backdrop-filter can't see the desktop).
+#[tauri::command]
+fn set_frosted(app: tauri::AppHandle, on: bool) {
+    use tauri::utils::config::WindowEffectsConfig;
+    use tauri::window::{Effect, EffectState};
+    let Some(l) = app.get_webview_window(LYRICS) else { return };
+    let _ = if on {
+        l.set_effects(WindowEffectsConfig {
+            effects: vec![Effect::HudWindow],
+            state: Some(EffectState::Active), // stay frosted even though the card never takes focus
+            radius: Some(12.0),                     // matches the card's corner radius
+            color: None,
+        })
+    } else {
+        l.set_effects(None)
+    };
+}
+
 /// Header close button (the tray menu has Quit too). float has no Dock icon (Accessory policy).
 #[tauri::command]
 fn quit(app: tauri::AppHandle) {
@@ -271,6 +311,8 @@ pub fn run() {
             lyrics_size,
             resize_lyrics,
             quit,
+            copy_text,
+            set_frosted,
             read_auth,
             write_auth
         ])

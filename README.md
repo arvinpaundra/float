@@ -3,6 +3,8 @@
 A floating, always-on-top mini player for macOS that shows **line-synced lyrics** for whatever is playing on Spotify.
 
 - Synced lyrics from [LRCLIB](https://lrclib.net), current line highlighted and centred; unsynced lyrics shown static with a `Not synced` badge
+- Click any line to jump playback there (right-click copies it); instrumental gaps and long intros count down as ♪ marks light up
+- Settings: album art instead of lyrics, frosted glass, teleprompter mode (highlight the active lyrics), lyrics size
 - Card themed from the album art (or show the cover instead of lyrics)
 - Play/pause and next, title with running text, drag to move, resize from the edges
 - Header (close, drag, settings) and resize zones appear only while the cursor is over the card; otherwise clicks pass through

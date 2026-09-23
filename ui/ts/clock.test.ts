@@ -1,6 +1,6 @@
 import { test } from "bun:test"
 import assert from "node:assert/strict"
-import { applySample, hold, makeClock, position, resume, SLEW_MS } from "./clock.ts"
+import { applySample, hold, makeClock, position, resume, seekTo, SLEW_MS } from "./clock.ts"
 
 test("first sample snaps, adds rtt/2, advances only while playing", () => {
   const c = makeClock()
@@ -48,4 +48,14 @@ test("resume after pause keeps the position", () => {
   hold(c, 2000) // pause at 12 s
   resume(c, 5000) // play 3 s later
   assert.equal(position(c, 6000), 13_000)
+})
+
+test("seekTo jumps the clock and keeps playing", () => {
+  const c = makeClock()
+  applySample(c, "A", 10_000, true, 0, 0)
+  seekTo(c, 60_000, 5_000)
+  assert.equal(position(c, 5_000), 60_000)
+  assert.equal(position(c, 6_000), 61_000) // still advancing
+  seekTo(c, -50, 6_000)
+  assert.equal(position(c, 6_000), 0) // never negative
 })

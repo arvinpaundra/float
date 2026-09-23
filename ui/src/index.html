@@ -7,7 +7,7 @@
 <style>
   /* Spotify mini-player look. Measured from the reference (306×304 pt), then tightened on x: 30 pt header strip, art inset 4 pt
      with 14 pt radius, info row (7 pt side inset) with 16 pt title / 12 pt artist, 1 pt border, 12 pt outer radius. */
-  :root { --top: #2b2b2e; --bottom: #141416; --header: 30px; --inset: 4px; }
+  :root { --top: #2b2b2e; --bottom: #141416; --header: 30px; --inset: 4px; --lyric-size: 15px; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { width: 100%; height: 100%; overflow: hidden; background: transparent; }
   body {
@@ -93,9 +93,7 @@
        (e.g. a 640 px cover image), the 83 % lyrics box grows past the clipped panel, and centring
        puts the highlighted line below the view. */
     grid-template-rows: minmax(0, 1fr);
-    justify-items: center;
-    align-items: start;
-    padding-top: 2.5%;
+    place-items: center; /* symmetric: equal space above and below the cover / lyrics box */
     position: relative;
     min-height: 0;
   }
@@ -110,6 +108,35 @@
   }
   .art.fading::before { opacity: 1; animation: fadeout 1s ease forwards; }
   @keyframes fadeout { to { opacity: 0; } }
+
+  /* ---- ambient glow: two soft blobs in the album's accent colour, drifting slowly ---- */
+  .glow {
+    position: absolute;
+    inset: -30%;
+    pointer-events: none;
+    opacity: .55;
+    filter: blur(26px);
+    background:
+      radial-gradient(38% 38% at 30% 32%, var(--accent, #3c3c46) 0%, transparent 70%),
+      radial-gradient(42% 42% at 72% 70%, var(--accent, #3c3c46) 0%, transparent 72%);
+    animation: drift 24s ease-in-out infinite alternate;
+    transition: background .8s ease;
+  }
+  @keyframes drift {
+    0%   { transform: translate3d(-3%, -2%, 0) scale(1); }
+    50%  { transform: translate3d(3%, 2%, 0) scale(1.08); }
+    100% { transform: translate3d(-2%, 3%, 0) scale(1.03); }
+  }
+  @media (prefers-reduced-motion: reduce) { .glow { animation: none; } }
+
+  /* ---- frosted glass: real macOS vibrancy behind the window (Rust sets the effect) ---- */
+  body.frosted .card { background: rgba(16,16,18,.42); }
+  body.frosted .art {
+    background: linear-gradient(180deg,
+      color-mix(in srgb, var(--top) 68%, transparent),
+      color-mix(in srgb, var(--bottom) 68%, transparent));
+  }
+  body.frosted .glow { opacity: .4; }
   /* Native scroll container: auto-scroll uses scrollTo (smooth), and the wheel works while hovered. */
   .lyrics {
     height: 83%;
@@ -134,7 +161,7 @@
   }
   .lines p {
     color: rgba(255,255,255,.35);
-    font-size: 15px;
+    font-size: var(--lyric-size);
     font-weight: 700;
     line-height: 1.35;
     text-align: center;
@@ -142,19 +169,116 @@
     transition: color .3s, transform .3s;
   }
   .lines p.active { color: #fff; transform: scale(1.05); }
+  /* a line is clickable: clicking it jumps playback there (only while the card takes the mouse, i.e. hovered) */
+  body.hover .lines p:not(.gap):hover { color: rgba(255,255,255,.75); cursor: pointer; }
+
+  /* instrumental gap / long intro: dots that light up as the gap runs out */
+  .lines p.gap {
+    display: flex;
+    justify-content: center;
+    gap: 6px;
+  }
+  .lines p.gap i {
+    font-style: normal;
+    font-size: var(--lyric-size);
+    line-height: 1.35;
+    color: rgba(255,255,255,.3);
+    transition: color .25s ease, transform .25s ease;
+  }
+  .lines p.gap.active i { color: rgba(255,255,255,.45); }
+  .lines p.gap.active[data-lit="1"] i:nth-child(1),
+  .lines p.gap.active[data-lit="2"] i:nth-child(-n+2),
+  .lines p.gap.active[data-lit="3"] i:nth-child(-n+3) { color: #fff; transform: scale(1.15); }
+  /* the last lit dot breathes, so a long gap still feels alive */
+  .lines p.gap.active[data-lit="1"] i:nth-child(1),
+  .lines p.gap.active[data-lit="2"] i:nth-child(2),
+  .lines p.gap.active[data-lit="3"] i:nth-child(3) { animation: pulse 1.1s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .55; transform: scale(1.05); } }
   /* unsynced lyrics: static, readable, start at the top, no highlight/auto-scroll */
   .art.plain .lines { padding-block: 14px; }
-  .art.plain .lines p { color: rgba(255,255,255,.88); font-size: 14px; font-weight: 600; }
+  .art.plain .lines p { color: rgba(255,255,255,.88); font-size: calc(var(--lyric-size) - 1px); font-weight: 600; }
+  /* ---- teleprompter: current line large, next line dim, nothing else ---- */
+  /* keep the half-box padding: with only two lines visible the box must still be able to
+     scroll far enough to put the active line in the middle */
+  body.teleprompter .lines { gap: 10px; }
+  body.teleprompter .lines p { display: none; }
+  /* previous (:has(+ .active)), current, next */
+  body.teleprompter .lines p:has(+ p.active),
+  body.teleprompter .lines p.active,
+  body.teleprompter .lines p.active + p { display: block; }
+  body.teleprompter .lines p.gap:has(+ p.active),
+  body.teleprompter .lines p.active.gap,
+  body.teleprompter .lines p.active + p.gap { display: flex; }
+  body.teleprompter .lines p.active {
+    color: #fff;
+    font-size: calc(var(--lyric-size) * 1.55);
+    line-height: 1.25;
+    transform: none; /* the size already emphasises it; no extra scale */
+  }
+  body.teleprompter .lines p:has(+ p.active),
+  body.teleprompter .lines p.active + p {
+    color: rgba(255,255,255,.4);
+    font-size: calc(var(--lyric-size) * 0.95);
+  }
+
+  /* ---- "up next": a heads-up that slides in for the last few seconds of a track ---- */
+  .upnext {
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    bottom: 8px;
+    z-index: 3;
+    display: flex;
+    justify-content: center;
+    pointer-events: none;
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity .35s ease, transform .35s ease;
+  }
+  .upnext.show { opacity: 1; transform: none; }
+  .upnext span {
+    max-width: 100%;
+    padding: 4px 10px;
+    border-radius: 11px;
+    background: rgba(0,0,0,.62);
+    color: rgba(255,255,255,.92);
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    backdrop-filter: blur(8px);
+  }
+  .upnext span::before { content: "Up next · "; color: rgba(255,255,255,.55); }
+
   .ct {
     position: absolute;
     inset: 0;
     display: grid;
     place-items: center;
+    align-content: center;
+    gap: 12px;
     padding: 24px;
     text-align: center;
     color: rgba(255,255,255,.7);
     font-size: 13px;
   }
+
+  /* ---- loading spinner: an arc in the album's accent colour, for every waiting state ---- */
+  .spinner {
+    display: none;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: conic-gradient(from 0deg, transparent 0turn, var(--accent, #fff) .72turn, transparent .96turn);
+    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
+    mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
+    animation: spin .9s linear infinite;
+    filter: drop-shadow(0 0 5px rgba(255,255,255,.3)); /* stays visible when the accent matches the panel */
+  }
+  .ct.busy .spinner, .connect.busy .spinner { display: block; }
+  @keyframes spin { to { transform: rotate(1turn); } }
+  @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.4s; } }
   /* timing badge: this track's offset, or a 2 s flash for the global one */
   #badge {
     position: absolute;
@@ -288,11 +412,15 @@
     bottom: 0;
     z-index: 4;
     display: none;
-    align-content: center;
+    align-content: start; /* scrolls when the rows outgrow a small card, instead of being cut off */
     gap: 14px;
-    padding: 0 22px 18px;
+    padding: 4px 22px 18px;
     background: #000;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
   }
+  .settings::-webkit-scrollbar { display: none; }
   body.settings-open .settings { display: grid; }
   .settings h2 { color: #fff; font-size: 17px; font-weight: 700; margin-bottom: 2px; }
   .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #fff; font-size: 15px; }
@@ -320,6 +448,33 @@
   }
   .switch input:checked + span { background: #1ed760; }
   .switch input:checked + span::after { transform: translateX(16px); }
+  /* styled explicitly: the native track is invisible on the dark panel */
+  .row input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 116px;
+    height: 16px;
+    flex-shrink: 0;
+    background: none;
+    cursor: default;
+  }
+  .row input[type="range"]::-webkit-slider-runnable-track {
+    height: 4px;
+    border-radius: 2px;
+    /* --fill (0–100%) is set from the current value */
+    background: linear-gradient(90deg, #1ed760 var(--fill, 0%), #535353 var(--fill, 0%));
+  }
+  .row input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 13px;
+    height: 13px;
+    margin-top: -4.5px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,.5);
+  }
+  .row input[type="range"]:hover::-webkit-slider-runnable-track { background: linear-gradient(90deg, #3be477 var(--fill, 0%), #6a6a6a var(--fill, 0%)); }
   #account {
     height: 28px;
     padding: 0 14px;
@@ -371,11 +526,13 @@
       </button>
     </div>
     <div class="art" id="art" data-mode="message">
+      <div class="glow" aria-hidden="true"></div>
       <img class="cover" id="cover" alt="" crossorigin="anonymous" referrerpolicy="no-referrer">
       <div id="badge" aria-live="polite"></div>
       <div class="lyrics" id="lyrics"><div class="lines" id="lines"></div></div>
-      <div class="ct"><p id="status">Connecting to Spotify…</p></div>
-      <div class="connect">
+      <div class="upnext" id="upnext" aria-live="polite"><span id="upnext-text"></span></div>
+      <div class="ct busy" id="ct"><span class="spinner" aria-hidden="true"></span><p id="status">Connecting to Spotify…</p></div>
+      <div class="connect" id="connect-panel">
         <button id="connect" aria-label="Connect to Spotify">
           <!-- Spotify icon (circle + three arcs), black on the brand-green button -->
           <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
@@ -385,6 +542,7 @@
           </svg>
           Connect
         </button>
+        <span class="spinner" aria-hidden="true"></span>
         <p id="connect-note"></p>
       </div>
     </div>
@@ -411,11 +569,23 @@
         </button>
       </div>
     </div>
-    <div class="settings" role="dialog" aria-label="float settings">
-      <h2>float settings</h2>
+    <div class="settings" role="dialog" aria-label="Settings">
+      <h2>Settings</h2>
       <label class="row">
         <span>Album art<small>Show the song's cover instead of lyrics</small></span>
         <span class="switch"><input type="checkbox" id="show-cover"><span></span></span>
+      </label>
+      <label class="row">
+        <span>Frosted glass<small>Blur the desktop behind the card</small></span>
+        <span class="switch"><input type="checkbox" id="frosted"><span></span></span>
+      </label>
+      <label class="row">
+        <span>Teleprompter<small>Highlight the active lyrics</small></span>
+        <span class="switch"><input type="checkbox" id="teleprompter"><span></span></span>
+      </label>
+      <label class="row">
+        <span>Lyrics size<small id="font-size-label">15 px</small></span>
+        <input type="range" id="font-size" min="12" max="24" step="1" value="15" aria-label="Lyrics size">
       </label>
       <div class="row">
         <span>Spotify<small id="account-note">Connected</small></span>

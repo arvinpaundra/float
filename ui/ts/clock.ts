@@ -44,6 +44,11 @@ export const reset = (c: Clock): void => {
   Object.assign(c, makeClock())
 }
 
+/** Optimistic jump after clicking a lyric line: show the new position before Spotify confirms it. */
+export const seekTo = (c: Clock, ms: number, now: number): void => {
+  Object.assign(c, { pos: Math.max(0, ms), at: now, rate: 1 })
+}
+
 /** Optimistic resume after the play button: keep the position, start advancing from `now`. */
 export const resume = (c: Clock, now: number): void => {
   Object.assign(c, { at: now, rate: 1, playing: true })
