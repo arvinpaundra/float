@@ -80,6 +80,9 @@ const main = Effect.gen(function* () {
   const savedOffset = yield* setting("global_offset_ms")
   if (savedOffset !== null && Number.isFinite(Number(savedOffset))) timing.global = Number(savedOffset)
   applyTiming()
+  // macOS-only settings (frosted glass) are hidden elsewhere
+  const platform = yield* Effect.promise(() => invoke<string>("host_platform").catch(() => "macos"))
+  document.body.dataset.platform = platform
   view.showCover((yield* setting("show_cover")) === "1")
   view.fontSize(fontSize(yield* setting("font_size")))
   view.teleprompter((yield* setting("teleprompter")) === "1")

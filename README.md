@@ -17,13 +17,16 @@ A floating, always-on-top mini player for macOS that shows **line-synced lyrics*
 curl -fsSL https://raw.githubusercontent.com/arvinpaundra/float/master/install.sh | bash
 ```
 
-Downloads the latest release, verifies its SHA-256 against the release manifest and installs `float.app` into
-`~/Applications` (no sudo). Pin a version with `| bash -s -- 0.1.0`, remove with `| bash -s -- --uninstall`.
+Downloads the latest release, verifies its SHA-256 against the release manifest and installs without sudo:
+`float.app` into `~/Applications` on macOS, or an AppImage into `~/.local/bin` plus a desktop entry on Linux
+(x86_64, glibc 2.35+ — Debian 12 / Ubuntu 22.04 or newer). Pin a version with `| bash -s -- 0.2.0`,
+remove with `| bash -s -- --uninstall`.
 Your Spotify account must be on the release's User Management list (see [Limitations](#limitations)).
 
 ## Requirements (to build)
 
-- macOS 14+ (Apple Silicon or Intel)
+- macOS 14+ (Apple Silicon or Intel), or Linux x86_64 with `libwebkit2gtk-4.1-dev`, `libayatana-appindicator3-dev`,
+  `librsvg2-dev`, `libxdo-dev`, `libssl-dev`, `build-essential`
 - [Rust](https://rustup.rs) and [bun](https://bun.sh)
 - Spotify **Premium**, and a Spotify developer app you own
 
@@ -92,7 +95,9 @@ scripts/release.sh --install   # …and install that build into ~/Applications v
 scripts/release.sh --publish   # …and create GitHub release v<version> (gh) — what install.sh downloads
 ```
 
-Bump `version` in both `tauri/tauri.conf.json` and `package.json` first (the script checks they match).
+The **git tag is the version** — `package.json`, `tauri/tauri.conf.json` and `Cargo.toml` all hold `0.0.0`.
+Releasing is one command: `git tag v0.2.1 && git push origin v0.2.1`, and CI builds both platforms and publishes.
+Locally, `scripts/release.sh` uses the latest tag unless you pass `--version`.
 Builds are ad-hoc signed. `install.sh` downloads with curl, which doesn't quarantine files, so the app opens without a
 Gatekeeper prompt; a **.dmg downloaded in a browser** is quarantined and needs *System Settings → Privacy & Security →
 Open Anyway* once. To sign and notarize with a Developer ID instead:
@@ -104,6 +109,13 @@ scripts/release.sh --sign "Developer ID Application: Your Name (TEAMID)"
 
 The Client ID from `.env` is baked into the build, so every user's Spotify account must be on that app's User
 Management list (max 5). The Mac App Store is not an option (private API for the transparent window).
+
+## Platform notes
+
+Linux runs the same card, lyrics and tray, driven by the Spotify Web API. Differences: frosted glass is macOS-only
+(the settings row is hidden), copying uses `wl-copy`/`xclip`/`xsel`, and the card needs the **X11 path** — the
+AppImage forces it, because Wayland gives no global cursor position, which is how float detects hover over a
+click-through window. Reading other players through MPRIS (VLC, mpv, browsers) is not built yet.
 
 ## Limitations
 
