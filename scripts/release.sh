@@ -6,6 +6,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+VERSION=""
 RUN_TEST=1
 RUN_TYPECHECK=1
 PUBLISH=0
@@ -19,10 +20,12 @@ while [[ $# -gt 0 ]]; do
     --install) INSTALL=1; shift ;;
     --publish) PUBLISH=1; shift ;;
     --sign) SIGN="${2:?--sign needs \"Developer ID Application: Name (TEAMID)\"}"; shift 2 ;;
+    --version) VERSION="${2:?--version needs a version like 0.2.1}"; shift 2 ;;
     --help|-h)
       cat <<'EOF'
 Usage: scripts/release.sh [--no-test] [--no-typecheck] [--sign "<Developer ID>"] [--install] [--publish]
 
+  --version   version to build (default: the latest git tag; releases come from tags, not files)
   --sign      sign with a Developer ID and notarize (needs APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID)
   --install   install the built app into ~/Applications (via ./install.sh, from the local files)
   --publish   create GitHub release v<version> with the zip, manifest.json and dmg (needs gh)
@@ -33,10 +36,11 @@ EOF
   esac
 done
 
-VERSION="$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' tauri/tauri.conf.json | head -1)"
-[[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Could not read version from tauri/tauri.conf.json" >&2; exit 1; }
-pkg_version="$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' package.json | head -1)"
-[[ "$pkg_version" == "$VERSION" ]] || { echo "Version mismatch: tauri.conf.json $VERSION vs package.json $pkg_version" >&2; exit 1; }
+# The git tag is the single source of truth: nothing to bump in files, nothing to keep in sync.
+VERSION="${VERSION:-$(git describe --tags --abbrev=0 2>/dev/null || true)}"
+VERSION="${VERSION#v}"
+[[ -n "$VERSION" ]] || VERSION="0.0.0-dev"
+[[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]] || { echo "Not a version: $VERSION" >&2; exit 1; }
 
 echo "==> float $VERSION"
 bun run check-env
@@ -56,7 +60,7 @@ fi
 
 echo "==> Building universal app (Apple Silicon + Intel)"
 rustup target list --installed | grep -q x86_64-apple-darwin || rustup target add x86_64-apple-darwin
-args=(build --target universal-apple-darwin)
+args=(build --target universal-apple-darwin --config "{\"version\":\"$VERSION\"}")
 [[ -n "$SIGN" ]] && args+=(--config "{\"bundle\":{\"macOS\":{\"signingIdentity\":\"$SIGN\"}}}")
 # CI=true: skip the Finder AppleScript that styles the DMG window (it fails without a GUI session)
 CI=true bun run tauri "${args[@]}"

@@ -95,7 +95,9 @@ scripts/release.sh --install   # …and install that build into ~/Applications v
 scripts/release.sh --publish   # …and create GitHub release v<version> (gh) — what install.sh downloads
 ```
 
-Bump `version` in both `tauri/tauri.conf.json` and `package.json` first (the script checks they match).
+The **git tag is the version** — `package.json`, `tauri/tauri.conf.json` and `Cargo.toml` all hold `0.0.0`.
+Releasing is one command: `git tag v0.2.1 && git push origin v0.2.1`, and CI builds both platforms and publishes.
+Locally, `scripts/release.sh` uses the latest tag unless you pass `--version`.
 Builds are ad-hoc signed. `install.sh` downloads with curl, which doesn't quarantine files, so the app opens without a
 Gatekeeper prompt; a **.dmg downloaded in a browser** is quarantined and needs *System Settings → Privacy & Security →
 Open Anyway* once. To sign and notarize with a Developer ID instead:
