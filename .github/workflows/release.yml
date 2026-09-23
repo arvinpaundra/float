@@ -1,26 +1,30 @@
 name: Release
 
 # Releasing is one command:  git tag v0.2.1 && git push origin v0.2.1
-# The tag IS the version — nothing in the repo stores it (see .github/version.sh).
+# The tag IS the version — nothing in the repo stores it.
 # Builds macOS (universal) and Linux (AppImage), then publishes the release install.sh downloads.
 on:
   push:
     tags: ["v*.*.*"]
-  workflow_dispatch: # manual run: rebuilds and republishes the latest tag
+  workflow_dispatch: # manual run: build and publish this version
+    inputs:
+      version:
+        description: Version to build and publish, e.g. 0.2.1
+        required: true
 
 permissions:
   contents: write # gh release create
 
 env:
   BUN_VERSION: 1.3.10
+  # tag run → refs/tags/v0.2.1 → 0.2.1; manual run → the version you typed
+  VERSION: ${{ inputs.version || github.ref_name }}
 
 jobs:
   macos:
     runs-on: macos-15 # Apple Silicon runner; the x86_64 target is added for the universal build
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # tags, for version.sh on manual runs
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
@@ -40,11 +44,8 @@ jobs:
           test -n "$SPOTIFY_CLIENT_ID" || { echo "::error::repository secret SPOTIFY_CLIENT_ID is not set"; exit 1; }
           echo "SPOTIFY_CLIENT_ID=$SPOTIFY_CLIENT_ID" > .env
 
-      - name: Resolve version
-        run: echo "VERSION=$(.github/version.sh)" >> "$GITHUB_ENV"
-
       # Same script as a local release: checks, universal build, zip + dmg (the manifest is written in `publish`).
-      - run: scripts/release.sh --version "$VERSION"
+      - run: scripts/release.sh --version "${VERSION#v}"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -56,8 +57,6 @@ jobs:
     runs-on: ubuntu-22.04 # oldest supported glibc: an AppImage built here runs on newer distros too
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
@@ -80,18 +79,15 @@ jobs:
           test -n "$SPOTIFY_CLIENT_ID" || { echo "::error::repository secret SPOTIFY_CLIENT_ID is not set"; exit 1; }
           echo "SPOTIFY_CLIENT_ID=$SPOTIFY_CLIENT_ID" > .env
 
-      - name: Resolve version
-        run: echo "VERSION=$(.github/version.sh)" >> "$GITHUB_ENV"
-
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
       - run: bun run test
-      - run: bun run tauri build --bundles appimage --config "{\"version\":\"$VERSION\"}"
+      - run: bun run tauri build --bundles appimage --config "{\"version\":\"${VERSION#v}\"}"
 
       - name: Collect the AppImage
         run: |
           mkdir -p dist
-          cp tauri/target/release/bundle/appimage/*.AppImage "dist/float-$VERSION-linux-x86_64.AppImage"
+          cp tauri/target/release/bundle/appimage/*.AppImage "dist/float-${VERSION#v}-linux-x86_64.AppImage"
           cp tauri/icons/128x128.png dist/float-icon-128.png # used by the .desktop entry
           ls -lh dist
 
@@ -106,8 +102,6 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
@@ -115,11 +109,10 @@ jobs:
         run: |
           mkdir -p out
           find artifacts -type f -exec cp {} out/ \;
-          echo "VERSION=$(.github/version.sh)" >> "$GITHUB_ENV"
-          scripts/manifest.sh "$(.github/version.sh)" out/* > out/manifest.json
+          scripts/manifest.sh "${VERSION#v}" out/* > out/manifest.json
           cat out/manifest.json
           ls -lh out
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "v$VERSION" out/* --title "float $VERSION" --generate-notes
+        run: gh release create "v${VERSION#v}" out/* --title "float ${VERSION#v}" --generate-notes
