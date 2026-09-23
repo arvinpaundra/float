@@ -74,6 +74,7 @@ echo "==> Packaging $out/$asset"
 ditto -c -k --sequesterRsrc --keepParent "$bundle/macos/float.app" "$out/$asset"
 cp "$bundle"/dmg/*.dmg "$out/"
 scripts/manifest.sh "$VERSION" "$out/$asset" > "$out/manifest.json"
+rm -rf "$bundle/macos/float.app"
 ls -lh "$out"
 
 if [[ "$INSTALL" == "1" ]]; then
