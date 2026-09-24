@@ -14,6 +14,6 @@ test("menu ids, nudge clamp, labels", () => {
   assert.equal(applyNudge(-5000, "-"), -5000)
   assert.equal(applyNudge(1750, "reset"), 0)
   assert.equal(offsetLabel(0), null)
-  assert.equal(offsetLabel(500), "0.50s earlier")
+  assert.equal(offsetLabel(500), "0.50s sooner")
   assert.equal(offsetLabel(-250), "0.25s later")
 })

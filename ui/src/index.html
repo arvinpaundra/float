@@ -140,9 +140,8 @@
   /* Native scroll container: auto-scroll uses scrollTo (smooth), and the wheel works while hovered. */
   .lyrics {
     height: 83%;
-    aspect-ratio: 1;
-    max-width: 100%;
-    padding: 0 12px;
+    width: 100%; /* not square: a square box is sized by the panel's height and wastes the sides */
+    padding: 0 16px;
     overflow-y: auto;
     overscroll-behavior: contain;
     scrollbar-width: none;
@@ -157,7 +156,7 @@
     gap: 12px;
     width: 100%;
     align-items: center;
-    padding-block: 50%; /* room so the first and last lines can sit in the centre (box is square) */
+    padding-block: 50%; /* room so the first and last lines can scroll to the centre */
   }
   .lines p {
     color: rgba(255,255,255,.35);
@@ -168,7 +167,19 @@
     white-space: pre-line; /* same-timestamp lines are merged with "\n" */
     transition: color .3s, transform .3s;
   }
+  .lines.nudge-earlier { animation: nudge-up .38s ease; }
+  .lines.nudge-later { animation: nudge-down .38s ease; }
+  .lines[class*="nudge-"] p.active { animation: nudge-pulse .38s ease; }
+  @keyframes nudge-up { 35% { transform: translateY(-7px); } }
+  @keyframes nudge-down { 35% { transform: translateY(7px); } }
+  @keyframes nudge-pulse { 35% { transform: scale(1.14); color: #fff; } }
   .lines p.active { color: #fff; transform: scale(1.05); }
+  .lines.nudge-earlier { animation: nudge-up .38s ease; }
+  .lines.nudge-later { animation: nudge-down .38s ease; }
+  .lines[class*="nudge-"] p.active { animation: nudge-pulse .38s ease; }
+  @keyframes nudge-up { 35% { transform: translateY(-7px); } }
+  @keyframes nudge-down { 35% { transform: translateY(7px); } }
+  @keyframes nudge-pulse { 35% { transform: scale(1.14); color: #fff; } }
   /* a line is clickable: clicking it jumps playback there (only while the card takes the mouse, i.e. hovered) */
   body.hover .lines p:not(.gap):hover { color: rgba(255,255,255,.75); cursor: pointer; }
 

@@ -26,4 +26,4 @@ export const applyNudge = (current: number, action: "+" | "-" | "reset"): number
 
 /** Badge text for an offset, or null when there is nothing to show. */
 export const offsetLabel = (ms: number): string | null =>
-  ms === 0 ? null : `${(Math.abs(ms) / 1000).toFixed(2)}s ${ms > 0 ? "earlier" : "later"}`
+  ms === 0 ? null : `${(Math.abs(ms) / 1000).toFixed(2)}s ${ms > 0 ? "sooner" : "later"}`

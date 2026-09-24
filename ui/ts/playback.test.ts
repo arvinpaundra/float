@@ -24,3 +24,14 @@ test("coverUrl is the largest image, artUrl the smallest", () => {
     artists: [{ name: "a" }], album: { name: "b", images: [{ url: "https://i.scdn.co/640" }, { url: "https://i.scdn.co/300" }, { url: "https://i.scdn.co/64" }] } } })
   assert.equal(p.kind === "item" && `${p.coverUrl}|${p.artUrl}`, "https://i.scdn.co/640|https://i.scdn.co/64")
 })
+
+test("a queue entry parses as an item, so its lyrics can be prefetched", () => {
+  const entry = { id: "q1", type: "track", name: "Next", duration_ms: 200_000, artists: [{ name: "A" }], album: { name: "Al", images: [{ url: "u" }] } }
+  const p = parsePlayback({ item: entry, is_playing: false, progress_ms: null })
+  assert.equal(p.kind, "item")
+  if (p.kind === "item") {
+    assert.equal(p.name, "Next")
+    assert.deepEqual([...p.artists], ["A"])
+    assert.equal(p.progressMs, null)
+  }
+})
