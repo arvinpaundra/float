@@ -50,7 +50,7 @@ export const currentlyPlaying = (accessToken: string) =>
   }).pipe(Effect.timeoutFail({ duration: "10 seconds", onTimeout: () => new NetworkError({ message: "currently-playing timed out" }) }))
 
 /** Next item in the user's queue, or null when the queue is empty / unreadable. Uses the scopes we already have. */
-export const upNext = (accessToken: string) =>
+export const upNext = (currentKey: string | null) => (accessToken: string) =>
   Effect.gen(function* () {
     const res = yield* Effect.tryPromise({
       try: (signal) =>
@@ -58,11 +58,20 @@ export const upNext = (accessToken: string) =>
       catch: (e) => new NetworkError({ message: `queue: ${String(e)}` }),
     })
     if (res.status === 401) return yield* Effect.fail(new Unauthorized())
-    if (!res.ok) return null // 403/404/429: the heads-up is optional, never worth an error on screen
+    if (!res.ok) return { label: null, item: null } // 403/404/429: optional, never worth an error on screen
     const body = safeJson(yield* Effect.tryPromise({ try: () => res.text(), catch: (e) => new NetworkError({ message: String(e) }) }))
-    const next = Array.isArray(body?.queue) ? body.queue[0] : null
-    return next ? nextLabel(next) : null
+    const next = pickNext(Array.isArray(body?.queue) ? body.queue : [], currentKey)
+    if (!next) return { label: null, item: null }
+    const parsed = parsePlayback({ item: next, is_playing: false, progress_ms: null })
+    return { label: nextLabel(next), item: parsed.kind === "item" ? parsed : null }
   }).pipe(Effect.timeoutFail({ duration: "10 seconds", onTimeout: () => new NetworkError({ message: "queue timed out" }) }))
+
+/** Spotify's queue leads with the current track, and during autoplay contains nothing else. */
+export const pickNext = (queue: readonly Record<string, any>[], currentKey: string | null): Record<string, any> | null => {
+  const key = (t: Record<string, any> | undefined): string | null =>
+    (typeof t?.id === "string" && t.id) || (typeof t?.uri === "string" && t.uri) || null
+  return queue.find((t) => key(t) !== null && key(t) !== currentKey) ?? null
+}
 
 /** Pure: a queue entry → "Song — Artist" (episodes have no artists). */
 export const nextLabel = (item: Record<string, any>): string | null => {

@@ -20,6 +20,12 @@ export const UP_NEXT_LEAD_MS = 5000
 export const showUpNext = (remainingMs: number, hasNext: boolean, playing: boolean): boolean =>
   hasNext && playing && remainingMs <= UP_NEXT_LEAD_MS && remainingMs > -500
 
+/** Spotify only fills the queue as a track plays: asked at its start it answers wrong, or not at all. */
+export const READ_QUEUE_AT_MS = 15_000
+
+export const shouldReadQueue = (remainingMs: number, playing: boolean, done: boolean): boolean =>
+  playing && !done && remainingMs <= READ_QUEUE_AT_MS && remainingMs > UP_NEXT_LEAD_MS
+
 export const FONT_MIN = 12
 export const FONT_MAX = 24
 export const FONT_DEFAULT = 15
@@ -41,6 +47,12 @@ export const gapDots = (now: number, start: number, end: number): number => {
   const p = (now - start) / (end - start)
   return Math.max(0, Math.min(GAP_DOTS, Math.floor(p * GAP_DOTS) + 1))
 }
+
+/** LRC files put a blank line between phrases while the singing continues; only a real break is a gap. */
+export const GAP_MIN_MS = 5000
+
+export const dropShortGaps = (ls: readonly Line[]): readonly Line[] =>
+  ls.filter((l, i) => l.text !== "" || i === ls.length - 1 || ls[i + 1]!.t - l.t >= GAP_MIN_MS)
 
 /** Pure: a long intro becomes a leading gap line, so the countdown runs before the first lyric. */
 export const withIntro = (ls: readonly Line[]): readonly Line[] =>
@@ -115,7 +127,7 @@ export const view = {
   },
   lyrics(ls: readonly Line[]): void {
     $("art").classList.remove("plain")
-    lines = withIntro(ls)
+    lines = withIntro(dropShortGaps(ls))
     active = -2
     $("lines").replaceChildren(
       ...lines.map((l) => {
@@ -137,6 +149,13 @@ export const view = {
     )
     setMode("lyrics")
     view.visible(true)
+  },
+  nudge(action: "+" | "-" | "reset"): void {
+    const lines = $("lines")
+    lines.classList.remove("nudge-earlier", "nudge-later")
+    void lines.offsetWidth
+    if (action !== "reset") lines.classList.add(action === "+" ? "nudge-earlier" : "nudge-later")
+    setTimeout(() => lines.classList.remove("nudge-earlier", "nudge-later"), 400)
   },
   /** Total offset (ms) added to the clock before the line lookup; takes effect on the next frame. */
   timing(ms: number): void {
@@ -397,6 +416,7 @@ export const startRender = (clock: Clock): void => {
     const visible = $("lyrics").clientHeight > 0
     if (visible && !wasVisible) scrolledTo = -2
     wasVisible = visible
+    if (clock.key) showHeadsUp(showUpNext(trackDuration - position(clock, performance.now()), upNextLabel !== null, clock.playing))
     if (lines.length && clock.key) {
       const i = lineAt(lines, position(clock, performance.now()) + offsetMs)
       if (i !== active) {
@@ -405,8 +425,6 @@ export const startRender = (clock: Clock): void => {
         active = i
         litDots = -1
       }
-      // "up next" heads-up in the last seconds of the track
-      showHeadsUp(showUpNext(trackDuration - position(clock, performance.now()), upNextLabel !== null, clock.playing))
       // instrumental gap: light the dots as it runs out (DOM touched only when the count changes)
       const gap = i >= 0 ? lines[i] : undefined
       if (gap && !gap.text) {

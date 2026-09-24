@@ -1,6 +1,6 @@
 import { test } from "bun:test"
 import assert from "node:assert/strict"
-import { controlProblem, nextLabel } from "./spotify.ts"
+import { controlProblem, nextLabel, pickNext } from "./spotify.ts"
 
 test("control errors map to user messages", () => {
   assert.equal(controlProblem(404, ""), "No active Spotify device")
@@ -15,4 +15,14 @@ test("nextLabel: song — artists, episodes without artists, junk", () => {
   assert.equal(nextLabel({ name: "Some Episode" }), "Some Episode")
   assert.equal(nextLabel({ artists: [{ name: "A" }] }), null)
   assert.equal(nextLabel({}), null)
+})
+
+test("pickNext: skips the track already playing, however often it repeats", () => {
+  const cur = { id: "cur" }, real = { id: "next" }
+  assert.equal(pickNext([real], "cur"), real)
+  assert.equal(pickNext([cur, real], "cur"), real)
+  assert.equal(pickNext([cur, cur, cur], "cur"), null)
+  assert.equal(pickNext([], "cur"), null)
+  assert.equal(pickNext([real], null), real)
+  assert.equal(pickNext([{ uri: "spotify:local:x" }], "spotify:local:x"), null)
 })

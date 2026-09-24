@@ -13,7 +13,7 @@ import type { Playback } from "./playback.ts"
 import { DELAY, delayPlaying, delayRateLimited } from "./schedule.ts"
 import { control, controlProblem, currentlyPlaying, upNext, type Control } from "./spotify.ts"
 import { applyNudge, offsetLabel, parseMenu } from "./timing.ts"
-import { fontSize, installCopy, onLineClick, startRender, themeFromUrl, view } from "./view.ts"
+import { fontSize, installCopy, onLineClick, shouldReadQueue, startRender, themeFromUrl, view } from "./view.ts"
 
 type Item = Extract<Playback, { kind: "item" }>
 
@@ -94,6 +94,7 @@ const main = Effect.gen(function* () {
   const auth = yield* makeAuth
   const wake = yield* Queue.unbounded<void>() // cuts the poll sleep short (e.g. after "Sign in again")
   let rateStreak = 0
+  let readQueueFor: string | null = null
 
   // ---- Connect: the only way a browser sign-in starts (button in the card, or the tray menu) ----
   let connecting = false
@@ -166,7 +167,8 @@ const main = Effect.gen(function* () {
       if (cmd.scope === "global") {
         timing.global = applyNudge(timing.global, cmd.action)
         applyTiming()
-        view.flash(`All tracks: ${offsetLabel(timing.global) ?? "reset"}`)
+        view.nudge(cmd.action)
+        view.flash(`All tracks: ${offsetLabel(timing.global) ?? "timing reset"}`)
         if (db) yield* cache.putSetting(db, "global_offset_ms", String(timing.global))
         return
       }
@@ -174,7 +176,9 @@ const main = Effect.gen(function* () {
       if (!t) return view.flash("No synced lyrics to adjust")
       t.offset = applyNudge(t.offset, cmd.action)
       applyTiming()
+      view.nudge(cmd.action)
       view.badge(offsetLabel(t.offset))
+      view.nudge(cmd.action)
       if (db) yield* cache.setOffset(db, t.key, t.offset) // row exists: synced lyrics came from the cache path
     }).pipe(Effect.catchAllCause((c) => Effect.logError("menu action failed", Cause.pretty(c))))
   void listen<string>("float:menu", (e) => void Effect.runFork(onMenu(e.payload)))
@@ -223,15 +227,7 @@ const main = Effect.gen(function* () {
       view.track(p, "Loading lyrics…")
       view.cover(p.coverUrl)
       yield* loader.load(p)
-      // the heads-up is optional: fetch it in the background, never delay or fail the poll
-      yield* Effect.forkDaemon(
-        auth
-          .withToken(upNext)
-          .pipe(
-            Effect.tap((label) => Effect.sync(() => view.upNext(label))),
-            Effect.catchAllCause(() => Effect.void),
-          ),
-      )
+      readQueueFor = null
     } else view.visible(true)
     if (p.progressMs === null) {
       hold(clock, s.recvAt)
@@ -239,6 +235,19 @@ const main = Effect.gen(function* () {
       return DELAY.paused
     }
     const jumped = applySample(clock, p.key, p.progressMs, p.isPlaying, s.sentAt, s.recvAt)
+    if (shouldReadQueue(p.durationMs - position(clock, performance.now()), p.isPlaying, readQueueFor === p.key)) {
+      readQueueFor = p.key
+      // the heads-up is optional: fetch it in the background, never delay or fail the poll
+      yield* Effect.forkDaemon(
+        auth
+          .withToken(upNext(p.key))
+          .pipe(
+            Effect.tap((n) => Effect.sync(() => view.upNext(n.label))),
+            Effect.tap((n) => (db && n.item ? Effect.forkDaemon(Effect.ignore(lyricsFor(db, n.item))) : Effect.void)),
+            Effect.catchAllCause(() => Effect.void),
+          ),
+      )
+    }
     return p.isPlaying ? delayPlaying(p.durationMs, position(clock, performance.now()), jumped) : DELAY.paused
   })
 

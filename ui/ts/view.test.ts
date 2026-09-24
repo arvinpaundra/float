@@ -1,6 +1,6 @@
 import { test } from "bun:test"
 import assert from "node:assert/strict"
-import { FONT_DEFAULT, FONT_MAX, FONT_MIN, fontSize, GAP_DOTS, gapDots, marqueeShift, showUpNext, UP_NEXT_LEAD_MS, withIntro } from "./view.ts"
+import { FONT_DEFAULT, FONT_MAX, FONT_MIN, fontSize, GAP_DOTS, gapDots, marqueeShift, dropShortGaps, GAP_MIN_MS, showUpNext, shouldReadQueue, READ_QUEUE_AT_MS, UP_NEXT_LEAD_MS, withIntro } from "./view.ts"
 
 test("marquee only when the title overflows, speed ≈ 30 px/s, min 6 s", () => {
   assert.equal(marqueeShift(200, 290), null)
@@ -44,4 +44,29 @@ test("showUpNext: last seconds only, while playing, with a next track", () => {
   assert.ok(!showUpNext(1000, false, true)) // queue unknown/empty
   assert.ok(!showUpNext(1000, true, false)) // paused near the end: no countdown running
   assert.ok(!showUpNext(-2000, true, true)) // clock overran the track: next poll will switch
+})
+
+test("shouldReadQueue: once per track, before the heads-up is due", () => {
+  assert.ok(shouldReadQueue(READ_QUEUE_AT_MS - 1, true, false))
+  assert.ok(!shouldReadQueue(READ_QUEUE_AT_MS + 1, true, false))
+  assert.ok(!shouldReadQueue(UP_NEXT_LEAD_MS, true, false))
+  assert.ok(!shouldReadQueue(READ_QUEUE_AT_MS - 1, true, true))
+  assert.ok(!shouldReadQueue(READ_QUEUE_AT_MS - 1, false, false))
+})
+
+test("dropShortGaps: keeps real breaks, drops blank lines between phrases", () => {
+  const ls = [
+    { t: 0, text: "one" },
+    { t: 2_000, text: "" },      // 1 s blank: still singing
+    { t: 3_000, text: "two" },
+    { t: 5_000, text: "" },      // 8 s break: a real gap
+    { t: 13_000, text: "three" },
+    { t: 20_000, text: "" },     // end marker: no successor, kept
+  ]
+  assert.deepEqual(
+    dropShortGaps(ls).map((l) => l.t),
+    [0, 3_000, 5_000, 13_000, 20_000],
+  )
+  const exact = [{ t: 0, text: "a" }, { t: 1_000, text: "" }, { t: 1_000 + GAP_MIN_MS, text: "b" }]
+  assert.equal(dropShortGaps(exact).length, 3)
 })
