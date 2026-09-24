@@ -120,6 +120,46 @@ fn host_platform() -> &'static str {
     std::env::consts::OS
 }
 
+/// Keep the card on screen when another app goes fullscreen: tao sets only CanJoinAllSpaces, and
+/// macOS needs FullScreenAuxiliary plus a level at or above the status bar's.
+#[cfg(target_os = "macos")]
+fn join_fullscreen_spaces(w: &tauri::WebviewWindow) {
+    use objc2_app_kit::{NSStatusWindowLevel, NSWindow, NSWindowCollectionBehavior};
+    let Ok(ptr) = w.ns_window() else { return };
+    let ns = unsafe { &*(ptr as *const NSWindow) };
+    // replaced, not merged: a resizable window carries FullScreenPrimary, which cancels FullScreenAuxiliary
+    ns.setCollectionBehavior(
+        NSWindowCollectionBehavior::CanJoinAllSpaces
+            | NSWindowCollectionBehavior::FullScreenAuxiliary
+            | NSWindowCollectionBehavior::Stationary,
+    );
+    // alwaysOnTop only reaches floating level (3), which a fullscreen app covers
+    ns.setLevel(NSStatusWindowLevel);
+}
+
+#[cfg(not(target_os = "macos"))]
+fn join_fullscreen_spaces(_w: &tauri::WebviewWindow) {}
+
+/// The card. Built here rather than in tauri.conf.json so it is created after the activation policy.
+fn build_card(app: &tauri::AppHandle) -> tauri::Result<tauri::WebviewWindow> {
+    tauri::WebviewWindowBuilder::new(app, LYRICS, tauri::WebviewUrl::App("index.html".into()))
+        .inner_size(320.0, 318.0)
+        .min_inner_size(240.0, 240.0)
+        .max_inner_size(560.0, 560.0)
+        .decorations(false)
+        .transparent(true)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .resizable(true)
+        .shadow(true)
+        .focused(false)
+        .visible(true)
+        .visible_on_all_workspaces(true)
+        .accept_first_mouse(true)
+        .background_throttling(tauri::utils::config::BackgroundThrottlingPolicy::Disabled)
+        .build()
+}
+
 /// "Frosted glass" setting: real macOS vibrancy behind the card (CSS backdrop-filter can't see the desktop).
 #[tauri::command]
 #[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
@@ -227,16 +267,16 @@ struct Controls {
 fn build_controls(app: &tauri::App) -> tauri::Result<Controls> {
     let item = |id: &str, text: &str| MenuItem::with_id(app, id, text, true, None::<&str>);
     let hide = item("hide", "Hide float")?;
-    let earlier = item("nudge:+250", "Lyrics earlier (0.25 s)")?;
-    let later = item("nudge:-250", "Lyrics later (0.25 s)")?;
-    let reset = item("nudge:reset", "Reset timing for this track")?;
+    let earlier = item("nudge:+250", "Show lyrics 0.25 s sooner")?;
+    let later = item("nudge:-250", "Show lyrics 0.25 s later")?;
+    let reset = item("nudge:reset", "Reset this track's timing")?;
     let all = Submenu::with_items(
         app,
-        "Timing for all tracks",
+        "Lyrics timing — all tracks",
         true,
         &[
-            &item("global:+250", "Earlier (0.25 s)")?,
-            &item("global:-250", "Later (0.25 s)")?,
+            &item("global:+250", "0.25 s sooner")?,
+            &item("global:-250", "0.25 s later")?,
             &item("global:reset", "Reset")?,
         ],
     )?;
@@ -352,17 +392,17 @@ pub fn run() {
             write_auth
         ])
         .setup(|app| {
+            // Order matters: a window created while the app is still a regular Dock app never gets
+            // CanJoinAllSpaces honoured, so it can never appear over another app's fullscreen space.
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
             let _ = std::fs::create_dir_all(app.path().app_data_dir()?);
+            let l = build_card(app.handle())?;
             if let Some(p) = load_pos(app.handle()).filter(|p| on_some_monitor(app.handle(), p)) {
-                if let Some(l) = app.get_webview_window(LYRICS) {
-                    let _ = l.set_position(LogicalPosition::new(p.lx, p.ly));
-                }
+                let _ = l.set_position(LogicalPosition::new(p.lx, p.ly));
             }
-            if let Some(l) = app.get_webview_window(LYRICS) {
-                let _ = l.set_ignore_cursor_events(true); // until the cursor reaches the card
-            }
+            let _ = l.set_ignore_cursor_events(true); // until the cursor reaches the card
+            join_fullscreen_spaces(&l);
             let controls = build_controls(app)?;
             app.manage(controls);
             spawn_hover_watch(app.handle().clone());
