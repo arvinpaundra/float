@@ -372,7 +372,18 @@ fn migrations() -> Vec<tauri_plugin_sql::Migration> {
     ]
 }
 
+/// The AppImage bundles WebKitGTK from the build image, and its DMA-BUF renderer aborts against a
+/// newer host graphics stack. Native packages link the system WebKit, so they keep the fast path.
+#[cfg(target_os = "linux")]
+fn appimage_render_workaround() {
+    if std::env::var_os("APPIMAGE").is_some() && std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
+}
+
 pub fn run() {
+    #[cfg(target_os = "linux")]
+    appimage_render_workaround();
     tauri::Builder::default()
         .plugin(
             tauri_plugin_sql::Builder::default()
