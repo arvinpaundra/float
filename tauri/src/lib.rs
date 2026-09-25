@@ -17,6 +17,8 @@ const HOVER_MARGIN: f64 = 12.0; // points around the card that still counts as "
 
 static HOVER_SHOWN: AtomicBool = AtomicBool::new(false);
 static USER_HIDDEN: AtomicBool = AtomicBool::new(false); // "Hide float" from the menu
+// No global cursor (Wayland, or no primary monitor): the card must stay clickable, not become a picture.
+static POINTER_BLIND: AtomicBool = AtomicBool::new(false);
 // Last position seen while the card moves; written to disk once it has been still for SAVE_AFTER.
 static PENDING_POS: Mutex<Option<(Pos, Instant)>> = Mutex::new(None);
 const SAVE_AFTER: Duration = Duration::from_millis(500);
@@ -220,9 +222,10 @@ fn write_auth(app: tauri::AppHandle, json: String) -> Result<(), String> {
 /// and the card could never be grabbed there.
 fn cursor_over_card(app: &tauri::AppHandle) -> Option<bool> {
     let l = app.get_webview_window(LYRICS)?;
-    let primary = app.primary_monitor().ok()??.scale_factor();
-    let c = app.cursor_position().ok()?.to_logical::<f64>(primary); // global NSEvent location, works unfocused
     let sf = l.scale_factor().ok()?;
+    // the cursor comes in the primary monitor's scale; fall back to the window's when there is no primary
+    let primary = app.primary_monitor().ok().flatten().map_or(sf, |m| m.scale_factor());
+    let c = app.cursor_position().ok()?.to_logical::<f64>(primary); // global NSEvent location, works unfocused
     let p = l.outer_position().ok()?.to_logical::<f64>(sf);
     let s = l.outer_size().ok()?.to_logical::<f64>(sf);
     Some(
@@ -245,8 +248,20 @@ fn spawn_hover_watch(app: tauri::AppHandle) {
                 }
             }
         }
-        let Some(over) = cursor_over_card(&app) else { continue };
+        let Some(over) = cursor_over_card(&app) else {
+            if !POINTER_BLIND.swap(true, Ordering::Relaxed) {
+                if let Some(w) = app.get_webview_window(LYRICS) {
+                    let _ = w.set_ignore_cursor_events(false);
+                }
+                let _ = app.emit("float:pointer-blind", true); // the UI drives hover from CSS instead
+            }
+            continue;
+        };
         let over = over && !USER_HIDDEN.load(Ordering::Relaxed); // a hidden card never reacts to hover
+        if POINTER_BLIND.swap(false, Ordering::Relaxed) {
+            HOVER_SHOWN.store(!over, Ordering::Relaxed); // force click-through to be re-applied below
+            let _ = app.emit("float:pointer-blind", false);
+        }
         if over == HOVER_SHOWN.swap(over, Ordering::Relaxed) {
             continue;
         }
@@ -372,6 +387,19 @@ fn migrations() -> Vec<tauri_plugin_sql::Migration> {
     ]
 }
 
+/// Native Wayland has no global cursor position, no always-on-top and no window placement, all of
+/// which the card depends on. XWayland has them — but only force it when it is actually running,
+/// since a pure-Wayland session without it would fail to start at all.
+#[cfg(target_os = "linux")]
+fn prefer_x11() {
+    if std::env::var_os("GDK_BACKEND").is_none()
+        && std::env::var_os("WAYLAND_DISPLAY").is_some()
+        && std::env::var_os("DISPLAY").is_some()
+    {
+        std::env::set_var("GDK_BACKEND", "x11");
+    }
+}
+
 /// The AppImage bundles WebKitGTK from the build image, and its DMA-BUF renderer aborts against a
 /// newer host graphics stack. Native packages link the system WebKit, so they keep the fast path.
 #[cfg(target_os = "linux")]
@@ -383,7 +411,10 @@ fn appimage_render_workaround() {
 
 pub fn run() {
     #[cfg(target_os = "linux")]
-    appimage_render_workaround();
+    {
+        prefer_x11();
+        appimage_render_workaround();
+    }
     tauri::Builder::default()
         .plugin(
             tauri_plugin_sql::Builder::default()
@@ -414,8 +445,13 @@ pub fn run() {
             }
             let _ = l.set_ignore_cursor_events(true); // until the cursor reaches the card
             join_fullscreen_spaces(&l);
-            let controls = build_controls(app)?;
-            app.manage(controls);
+            match build_controls(app) {
+                Ok(controls) => {
+                    app.manage(controls);
+                }
+                // no tray (GNOME without the AppIndicator extension, KDE Wayland): keep the card
+                Err(e) => eprintln!("tray unavailable: {e}"),
+            }
             spawn_hover_watch(app.handle().clone());
             Ok(())
         })
