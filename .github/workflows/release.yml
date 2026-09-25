@@ -98,7 +98,9 @@ jobs:
                -name 'libxcb-randr.so.*' -o -name 'libxcb-render.so.*' -o \
                -name 'libxcb-shm.so.*'   -o -name 'libXau.so.*'       -o \
                -name 'libXdmcp.so.*' \) -print -delete
-          wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          # pinned: `continuous` moves, and a release must stay reproducible
+          wget -q https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage
+          echo "ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0  appimagetool-x86_64.AppImage" | sha256sum -c -
           chmod +x appimagetool-x86_64.AppImage
           rm -f "$app"
           APPIMAGE_EXTRACT_AND_RUN=1 ARCH=x86_64 ./appimagetool-x86_64.AppImage squashfs-root "$app"
