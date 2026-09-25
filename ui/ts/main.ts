@@ -65,6 +65,18 @@ const main = Effect.gen(function* () {
   // Rust broadcasts hover (the card is click-through otherwise, so CSS :hover can't be trusted).
   // It reveals the header's close button and drag dots.
   void listen<boolean>("float:hover", (e) => document.body.classList.toggle("hover", e.payload))
+  // No global cursor to poll (Wayland): the card stays clickable and hover comes from the DOM instead.
+  void listen<boolean>("float:pointer-blind", (e) => {
+    document.body.classList.toggle("pointer-blind", e.payload)
+    if (e.payload) view.flash("Limited on Wayland: no always-on-top")
+  })
+  const card = document.getElementById("card")!
+  card.addEventListener("mouseenter", () => {
+    if (document.body.classList.contains("pointer-blind")) document.body.classList.add("hover")
+  })
+  card.addEventListener("mouseleave", () => {
+    if (document.body.classList.contains("pointer-blind")) document.body.classList.remove("hover")
+  })
   installResize(document.getElementById("resize-r")!, "x")
   installResize(document.getElementById("resize-b")!, "y")
   installResize(document.getElementById("resize-br")!, "xy")

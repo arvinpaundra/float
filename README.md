@@ -113,9 +113,11 @@ Management list (max 5). The Mac App Store is not an option (private API for the
 ## Platform notes
 
 Linux runs the same card, lyrics and tray, driven by the Spotify Web API. Differences: frosted glass is macOS-only
-(the settings row is hidden), copying uses `wl-copy`/`xclip`/`xsel`, and the card needs the **X11 path** — the
-AppImage forces it, because Wayland gives no global cursor position, which is how float detects hover over a
-click-through window. Reading other players through MPRIS (VLC, mpv, browsers) is not built yet.
+(the settings row is hidden), copying uses `wl-copy`/`xclip`/`xsel`, and the card needs the **X11 path**.
+Native Wayland has no global cursor position, no always-on-top and no window placement, so float switches to
+XWayland when it is available. Without it the card still works, but it stays clickable rather than
+click-through, hover comes from the DOM, and it will not float above other windows. Reading other players
+through MPRIS (VLC, mpv, browsers) is not built yet.
 
 The AppImage carries its own WebKitGTK, whose DMA-BUF renderer can abort against a newer host graphics stack
 (a blank card, or `WebKitWebProcess has encountered a fatal error`). float sets `WEBKIT_DISABLE_DMABUF_RENDERER=1`
