@@ -22,6 +22,7 @@ env:
 
 jobs:
   macos:
+    if: false # temporarily off while iterating on the Linux AppImage; delete this line to restore
     runs-on: macos-15 # Apple Silicon runner; the x86_64 target is added for the universal build
     steps:
       - uses: actions/checkout@v4
@@ -84,6 +85,25 @@ jobs:
       - run: bun run test
       - run: bun run tauri build --bundles appimage --config "{\"version\":\"${VERSION#v}\"}"
 
+      # Bundling these shadows the host's copies via AppRun's LD_LIBRARY_PATH, and a newer Mesa then
+      # fails EGL display creation, killing WebKitWebProcess. The AppImage excludelist says never to
+      # ship them; linuxdeploy's own list misses the wayland/xcb set, so remove them here.
+      - name: Unbundle host-provided libraries
+        run: |
+          cd tauri/target/release/bundle/appimage
+          app="$(ls *.AppImage)"
+          ./"$app" --appimage-extract >/dev/null
+          find squashfs-root/usr/lib -maxdepth 2 \( \
+               -name 'libwayland-*.so.*' -o -name 'libxkbcommon.so.*' -o \
+               -name 'libxcb-randr.so.*' -o -name 'libxcb-render.so.*' -o \
+               -name 'libxcb-shm.so.*'   -o -name 'libXau.so.*'       -o \
+               -name 'libXdmcp.so.*' \) -print -delete
+          wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool-x86_64.AppImage
+          rm -f "$app"
+          APPIMAGE_EXTRACT_AND_RUN=1 ARCH=x86_64 ./appimagetool-x86_64.AppImage squashfs-root "$app"
+          ls -lh "$app"
+
       - name: Collect the AppImage
         run: |
           mkdir -p dist
@@ -99,6 +119,7 @@ jobs:
 
   publish:
     needs: [macos, linux]
+    if: always() && needs.linux.result == 'success'
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -115,4 +136,8 @@ jobs:
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "v${VERSION#v}" out/* --title "float ${VERSION#v}" --generate-notes
+        run: |
+          args=()
+          # no macOS build in this release: keep "latest" (what install.sh resolves) on the last full one
+          ls out/*darwin-universal.zip >/dev/null 2>&1 || args+=(--prerelease)
+          gh release create "v${VERSION#v}" out/* --title "float ${VERSION#v}" --generate-notes "${args[@]}"
