@@ -117,6 +117,10 @@ Linux runs the same card, lyrics and tray, driven by the Spotify Web API. Differ
 AppImage forces it, because Wayland gives no global cursor position, which is how float detects hover over a
 click-through window. Reading other players through MPRIS (VLC, mpv, browsers) is not built yet.
 
+The AppImage carries its own WebKitGTK, whose DMA-BUF renderer can abort against a newer host graphics stack
+(a blank card, or `WebKitWebProcess has encountered a fatal error`). float sets `WEBKIT_DISABLE_DMABUF_RENDERER=1`
+for AppImage runs only; set it to `0` to opt out, or `WEBKIT_DISABLE_COMPOSITING_MODE=1` if the card still crashes.
+
 ## Limitations
 
 - **Spotify development mode:** at most 5 allowlisted users per Client ID, and the app owner needs Premium. Public distribution means each user brings their own Client ID.
