@@ -336,6 +336,7 @@
   #connect:hover { background: #3be477; transform: scale(1.03); }
   #connect:active { transform: scale(.97); }
   #connect:disabled { background: #1ed760; opacity: .55; transform: none; }
+  .connect.busy #connect { display: none; }
   #connect-note { max-width: 220px; color: rgba(255,255,255,.75); font-size: 12px; line-height: 1.35; }
   /* ---- "Album art" setting: the song's cover replaces the lyrics (Spotify mini-player look) ----
      Same cell and size as the lyrics box; lyrics/status hide only once the cover has actually loaded. */
@@ -356,7 +357,7 @@
   .art.with-cover:not([data-mode="connect"]):has(.cover.loaded) .cover { opacity: 1; }
   .art.with-cover:not([data-mode="connect"]):has(.cover.loaded) :is(.lyrics, .ct) { display: none; }
   .art[data-mode="connect"] .cover { display: none; }
-  .lyrics, .ct, .connect { z-index: 1; }
+  .cover, .lyrics, .ct, .connect { z-index: 1; }
 
   .art[data-mode="lyrics"] .ct, .art[data-mode="connect"] .ct { display: none; }
   .art[data-mode="message"] .lyrics, .art[data-mode="connect"] .lyrics { display: none; }
