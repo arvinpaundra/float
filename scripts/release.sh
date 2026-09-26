@@ -91,7 +91,7 @@ if [[ "$PUBLISH" == "1" ]]; then
   echo "==> Publishing GitHub release v$VERSION"
   command -v gh >/dev/null || { echo "gh (GitHub CLI) is required for --publish" >&2; exit 1; }
   gh release create "v$VERSION" "$out/$asset" "$out/manifest.json" "$out"/*.dmg \
-    --title "float $VERSION" --generate-notes
+    --title "v$VERSION" --generate-notes
 fi
 
 echo "==> Done: $out"

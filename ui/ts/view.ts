@@ -200,8 +200,10 @@ export const view = {
    * "Album art" setting: the song's cover instead of the lyrics. Only Spotify's CDN is accepted (the URL comes
    * from the API, but it still lands in the DOM); crossorigin keeps the image from tainting anything.
    */
-  cover(url: string | null): void {
-    coverUrl = url !== null && url.startsWith("https://i.scdn.co/") ? url : null
+  cover(url: string | null, thumb: string | null = null): void {
+    const spotify = (u: string | null) => (u !== null && u.startsWith("https://i.scdn.co/") ? u : null)
+    coverUrl = spotify(url)
+    thumbUrl = spotify(thumb)
     applyCover()
   },
   /** Teleprompter: show only the current line (large) and the next one (dim). */
@@ -287,15 +289,40 @@ export const view = {
 // Album art: remember the current track's cover, but only load it while the setting is on
 // (no 640 px download per track for nothing).
 let coverUrl: string | null = null
+let thumbUrl: string | null = null
 let coverOn = false
+let upgrading: HTMLImageElement | null = null
+
 const applyCover = (): void => {
   const img = $("cover") as HTMLImageElement
-  const want = coverOn ? coverUrl : null
-  if (want !== null && img.getAttribute("src") === want) return
-  img.classList.remove("loaded")
-  if (want === null) return void img.removeAttribute("src")
-  img.onload = () => img.classList.add("loaded")
-  img.src = want
+  upgrading = null
+  if (!coverOn || coverUrl === null) {
+    img.classList.remove("loaded")
+    img.removeAttribute("src")
+    return
+  }
+  if (img.getAttribute("src") === coverUrl) return
+  // the small art is already cached from the theme pass, so it shows at once; the full size swaps in after
+  if (thumbUrl !== null && img.getAttribute("src") !== thumbUrl) {
+    img.classList.remove("loaded")
+    img.onload = () => img.classList.add("loaded")
+    img.src = thumbUrl
+  }
+  const full = new Image()
+  upgrading = full
+  const url = coverUrl
+  full.onload = () => {
+    if (upgrading !== full) return
+    img.src = url
+    img.classList.add("loaded")
+    upgrading = null
+  }
+  full.src = url
+  if (thumbUrl === null) {
+    img.classList.remove("loaded")
+    img.onload = () => img.classList.add("loaded")
+    img.src = url
+  }
 }
 
 const showBadge = (text: string | null): void => {
@@ -349,13 +376,20 @@ export const onLineClick = (seek: (positionMs: number) => void): void => {
 }
 
 /** Load album art (CORS: i.scdn.co sends ACAO *) and derive the theme. Resolves DEFAULT_THEME on any failure. */
-export const themeFromUrl = async (url: string | null): Promise<Theme> => {
+export const themeFromUrl = async (url: string | null, signal?: AbortSignal): Promise<Theme> => {
   if (!url) return DEFAULT_THEME
   try {
     const img = new Image()
     img.crossOrigin = "anonymous" // required, or the canvas is tainted and getImageData throws
     img.src = url
-    await img.decode()
+    const abandon = () => (img.src = "")
+    signal?.addEventListener("abort", abandon, { once: true })
+    try {
+      await img.decode()
+    } finally {
+      signal?.removeEventListener("abort", abandon)
+    }
+    if (signal?.aborted) return DEFAULT_THEME
     const size = 32
     const canvas = document.createElement("canvas")
     canvas.width = canvas.height = size

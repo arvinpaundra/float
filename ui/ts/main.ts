@@ -42,7 +42,9 @@ const makeLoader = (db: Database | null) =>
       Effect.gen(function* () {
         const prev = yield* Ref.get(inflight)
         if (prev) yield* Fiber.interrupt(prev) // aborts its fetches via AbortSignal
-        const theme = Effect.promise(() => themeFromUrl(p.artUrl)).pipe(Effect.tap((t) => Effect.sync(() => view.theme(t))))
+        const theme = Effect.promise((signal) => themeFromUrl(p.artUrl, signal)).pipe(
+          Effect.tap((t) => Effect.sync(() => view.theme(t))),
+        )
         const lyrics = lyricsFor(db, p).pipe(
           // LRCLIB down/rate-limited after its own retries: tell the user, try again every 30 s (3×)
           Effect.tapError(() => Effect.sync(() => view.message("Lyrics unavailable, retrying…"))),
@@ -52,7 +54,7 @@ const makeLoader = (db: Database | null) =>
         )
         const fiber = yield* Effect.all([theme, lyrics], { concurrency: "unbounded", discard: true }).pipe(
           Effect.catchAllCause((c) => Effect.logError("track load failed", Cause.pretty(c))),
-          Effect.forkDaemon, // lifetime managed here, not by the poll iteration that started it
+          Effect.forkScoped,
         )
         yield* Ref.set(inflight, fiber)
       })
@@ -107,6 +109,7 @@ const main = Effect.gen(function* () {
   const wake = yield* Queue.unbounded<void>() // cuts the poll sleep short (e.g. after "Sign in again")
   let rateStreak = 0
   let readQueueFor: string | null = null
+  const sideWork = yield* Ref.make<Fiber.RuntimeFiber<void, never> | null>(null)
 
   // ---- Connect: the only way a browser sign-in starts (button in the card, or the tray menu) ----
   let connecting = false
@@ -230,15 +233,17 @@ const main = Effect.gen(function* () {
     view.playing(p.kind === "item" ? p.isPlaying : null)
     if (p.kind !== "item") {
       reset(clock)
-      view.visible(false)
+      view.message(p.kind === "ad" ? "Advertisement" : "Nothing playing on Spotify", false)
       return p.kind === "ad" ? DELAY.paused : DELAY.idle
     }
     if (p.key !== clock.key) {
       timing.track = null
       view.badge(null)
       view.track(p, "Loading lyrics…")
-      view.cover(p.coverUrl)
+      view.cover(p.coverUrl, p.artUrl)
       yield* loader.load(p)
+      const stale = yield* Ref.get(sideWork)
+      if (stale) yield* Fiber.interrupt(stale)
       readQueueFor = null
     } else view.visible(true)
     if (p.progressMs === null) {
@@ -250,15 +255,17 @@ const main = Effect.gen(function* () {
     if (shouldReadQueue(p.durationMs - position(clock, performance.now()), p.isPlaying, readQueueFor === p.key)) {
       readQueueFor = p.key
       // the heads-up is optional: fetch it in the background, never delay or fail the poll
-      yield* Effect.forkDaemon(
+      const fiber = yield* Effect.forkScoped(
         auth
           .withToken(upNext(p.key))
           .pipe(
             Effect.tap((n) => Effect.sync(() => view.upNext(n.label))),
-            Effect.tap((n) => (db && n.item ? Effect.forkDaemon(Effect.ignore(lyricsFor(db, n.item))) : Effect.void)),
+            Effect.tap((n) => (db && n.item ? Effect.ignore(lyricsFor(db, n.item)) : Effect.void)),
             Effect.catchAllCause(() => Effect.void),
+            Effect.asVoid,
           ),
       )
+      yield* Ref.set(sideWork, fiber)
     }
     return p.isPlaying ? delayPlaying(p.durationMs, position(clock, performance.now()), jumped) : DELAY.paused
   })
@@ -290,4 +297,4 @@ const main = Effect.gen(function* () {
   }).pipe(Effect.forever)
 })
 
-Effect.runFork(main)
+Effect.runFork(Effect.scoped(main))
