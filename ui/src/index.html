@@ -212,14 +212,14 @@
   /* keep the half-box padding: with only two lines visible the box must still be able to
      scroll far enough to put the active line in the middle */
   body.teleprompter .lines { gap: 10px; }
-  body.teleprompter .lines p { display: none; }
+  body.teleprompter .art:not(.plain) .lines p { display: none; }
   /* previous (:has(+ .active)), current, next */
-  body.teleprompter .lines p:has(+ p.active),
-  body.teleprompter .lines p.active,
-  body.teleprompter .lines p.active + p { display: block; }
-  body.teleprompter .lines p.gap:has(+ p.active),
-  body.teleprompter .lines p.active.gap,
-  body.teleprompter .lines p.active + p.gap { display: flex; }
+  body.teleprompter .art:not(.plain) .lines p:has(+ p.active),
+  body.teleprompter .art:not(.plain) .lines p.active,
+  body.teleprompter .art:not(.plain) .lines p.active + p { display: block; }
+  body.teleprompter .art:not(.plain) .lines p.gap:has(+ p.active),
+  body.teleprompter .art:not(.plain) .lines p.active.gap,
+  body.teleprompter .art:not(.plain) .lines p.active + p.gap { display: flex; }
   body.teleprompter .lines p.active {
     color: #fff;
     font-size: calc(var(--lyric-size) * 1.55);
@@ -296,14 +296,17 @@
     top: 8px;
     left: 9px;
     z-index: 2;
-    padding: 1px 5px;
-    border-radius: 6px;
-    background: #f5a623;
-    color: #000;
-    font: 700 8px/1.4 ui-monospace, "SF Mono", monospace;
-    letter-spacing: .02em;
+    padding: 3px 8px;
+    border-radius: 10px;
+    border: 1px solid color-mix(in srgb, var(--accent, #fff) 38%, transparent);
+    background: rgba(0,0,0,.55);
+    color: rgba(255,255,255,.92);
+    font: 600 10px/1.3 -apple-system, BlinkMacSystemFont, sans-serif;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: .01em;
+    backdrop-filter: blur(8px);
     opacity: 0;
-    transition: opacity .2s ease;
+    transition: opacity .2s ease, border-color .8s ease;
     pointer-events: none;
   }
   #badge.show { opacity: 1; }
@@ -355,7 +358,7 @@
   }
   .lyrics { grid-area: 1 / 1; min-height: 0; }
   .art.with-cover:not([data-mode="connect"]):has(.cover.loaded) .cover { opacity: 1; }
-  .art.with-cover:not([data-mode="connect"]):has(.cover.loaded) :is(.lyrics, .ct) { display: none; }
+  .art.with-cover:not([data-mode="connect"]):has(.cover.loaded) :is(.lyrics, .ct, #badge) { display: none; }
   .art[data-mode="connect"] .cover { display: none; }
   .cover, .lyrics, .ct, .connect { z-index: 1; }
 

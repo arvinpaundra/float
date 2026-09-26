@@ -1,6 +1,6 @@
 import { test } from "bun:test"
 import assert from "node:assert/strict"
-import { applySample, hold, makeClock, position, resume, seekTo, SLEW_MS } from "./clock.ts"
+import { applySample, hold, makeClock, position, resume, seekTo, SLEW_MS, STALE_RTT_MS } from "./clock.ts"
 
 test("first sample snaps, adds rtt/2, advances only while playing", () => {
   const c = makeClock()
@@ -58,4 +58,37 @@ test("seekTo jumps the clock and keeps playing", () => {
   assert.equal(position(c, 6_000), 61_000) // still advancing
   seekTo(c, -50, 6_000)
   assert.equal(position(c, 6_000), 0) // never negative
+})
+
+test("one backward sample is noise, two are a rewind", () => {
+  const c = makeClock()
+  applySample(c, "A", 0, true, 0, 0)
+  assert.equal(applySample(c, "A", 5_000, true, 10_000, 10_000), false, "first backward sample is ignored")
+  assert.equal(position(c, 10_000), 10_000, "clock keeps running")
+  assert.equal(applySample(c, "A", 5_000, true, 10_100, 10_100), true, "the second one snaps")
+  assert.equal(position(c, 10_100), 5_000)
+})
+
+test("a forward jump still snaps on the first sample", () => {
+  const c = makeClock()
+  applySample(c, "A", 0, true, 0, 0)
+  assert.equal(applySample(c, "A", 60_000, true, 10_000, 10_000), true)
+  assert.equal(position(c, 10_000), 60_000)
+})
+
+test("a slow round trip is not used to correct", () => {
+  const c = makeClock()
+  applySample(c, "A", 0, true, 0, 0)
+  const slow = STALE_RTT_MS + 500
+  assert.equal(applySample(c, "A", 5_000, true, 10_000 - slow, 10_000), false)
+  assert.equal(position(c, 10_000), 10_000, "extrapolation continues untouched")
+})
+
+test("a stall that resolves does not leave a backward vote pending", () => {
+  const c = makeClock()
+  applySample(c, "A", 0, true, 0, 0)
+  applySample(c, "A", 5_000, true, 10_000, 10_000) // one lagging sample: ignored
+  applySample(c, "A", 10_200, true, 10_100, 10_100) // progress catches up: small error, slews
+  assert.equal(c.backVotes, 0)
+  assert.equal(applySample(c, "A", 5_000, true, 10_200, 10_200), false, "vote had to start again")
 })
