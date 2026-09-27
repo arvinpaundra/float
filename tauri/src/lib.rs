@@ -241,36 +241,44 @@ fn cursor_over_card(app: &tauri::AppHandle) -> Option<bool> {
 fn spawn_hover_watch(app: tauri::AppHandle) {
     std::thread::spawn(move || loop {
         std::thread::sleep(HOVER_POLL);
-        if let Ok(mut pending) = PENDING_POS.lock() {
-            if pending.as_ref().is_some_and(|(_, at)| at.elapsed() >= SAVE_AFTER) {
-                if let Some((p, _)) = pending.take() {
-                    save_pos(&app, p);
-                }
-            }
-        }
-        let Some(over) = cursor_over_card(&app) else {
-            if !POINTER_BLIND.swap(true, Ordering::Relaxed) {
-                if let Some(w) = app.get_webview_window(LYRICS) {
-                    let _ = w.set_ignore_cursor_events(false);
-                }
-                let _ = app.emit("float:pointer-blind", true); // the UI drives hover from CSS instead
-            }
-            continue;
-        };
-        let over = over && !USER_HIDDEN.load(Ordering::Relaxed); // a hidden card never reacts to hover
-        if POINTER_BLIND.swap(false, Ordering::Relaxed) {
-            HOVER_SHOWN.store(!over, Ordering::Relaxed); // force click-through to be re-applied below
-            let _ = app.emit("float:pointer-blind", false);
-        }
-        if over == HOVER_SHOWN.swap(over, Ordering::Relaxed) {
-            continue;
-        }
-        // While hovered the card takes the mouse (header buttons, drag, wheel, grip); otherwise click-through.
-        if let Some(w) = app.get_webview_window(LYRICS) {
-            let _ = w.set_ignore_cursor_events(!over);
-        }
-        let _ = app.emit("float:hover", over); // reveals header controls + grip
+        // AppKit hands back autoreleased objects; this thread has no run loop to drain them
+        #[cfg(target_os = "macos")]
+        objc2::rc::autoreleasepool(|_| hover_tick(&app));
+        #[cfg(not(target_os = "macos"))]
+        hover_tick(&app);
     });
+}
+
+fn hover_tick(app: &tauri::AppHandle) {
+    if let Ok(mut pending) = PENDING_POS.lock() {
+        if pending.as_ref().is_some_and(|(_, at)| at.elapsed() >= SAVE_AFTER) {
+            if let Some((p, _)) = pending.take() {
+                save_pos(app, p);
+            }
+        }
+    }
+    let Some(over) = cursor_over_card(app) else {
+        if !POINTER_BLIND.swap(true, Ordering::Relaxed) {
+            if let Some(w) = app.get_webview_window(LYRICS) {
+                let _ = w.set_ignore_cursor_events(false);
+            }
+            let _ = app.emit("float:pointer-blind", true); // the UI drives hover from CSS instead
+        }
+        return;
+    };
+    let over = over && !USER_HIDDEN.load(Ordering::Relaxed); // a hidden card never reacts to hover
+    if POINTER_BLIND.swap(false, Ordering::Relaxed) {
+        HOVER_SHOWN.store(!over, Ordering::Relaxed); // force click-through to be re-applied below
+        let _ = app.emit("float:pointer-blind", false);
+    }
+    if over == HOVER_SHOWN.swap(over, Ordering::Relaxed) {
+        return;
+    }
+    // While hovered the card takes the mouse (header buttons, drag, wheel, grip); otherwise click-through.
+    if let Some(w) = app.get_webview_window(LYRICS) {
+        let _ = w.set_ignore_cursor_events(!over);
+    }
+    let _ = app.emit("float:hover", over); // reveals header controls + grip
 }
 
 /// The menu-bar tray icon and its menu (the only place for float's controls besides the header's close button).
